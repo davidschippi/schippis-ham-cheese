@@ -1,4 +1,4 @@
-# Ham Pocket Pro Plus – Vite + Capacitor v11.4
+# Schippi's Ham&Cheese v11.4
 
 Korrekturen in dieser Version:
 - **Locator Datum** und **GPS-Standort Datum** sind jetzt sichtbar
