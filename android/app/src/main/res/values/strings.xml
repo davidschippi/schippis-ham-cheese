@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Schippi\'s Ham&amp;Cheese</string>
+    <string name="title_activity_main">Schippi\'s Ham&amp;Cheese</string>
+    <string name="package_name">de.davidx.schippis_ham_cheese</string>
+    <string name="custom_url_scheme">de.davidx.schippis_ham_cheese</string>
+</resources>

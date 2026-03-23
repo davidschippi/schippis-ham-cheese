@@ -1,0 +1,16 @@
+Schippi's Ham&Cheese – Weltweite Präfixliste
+
+In dieser Version wurde die bisher kleine Präfixliste durch eine stark erweiterte weltweite DXCC-/Präfixliste ersetzt.
+
+Enthalten:
+- sehr viele aktuelle Länder- und Gebietspräfixe
+- zahlreiche Sondergebiete und Inseln
+- längere Spezialpräfixe werden vor kürzeren geprüft
+
+Wichtig:
+- Einige Rufzeichenbereiche sind weltweit grundsätzlich mehrdeutig.
+- Manche Gebiete teilen sich Grundpräfixe oder brauchen zusätzliche Ausnahmelogik.
+- Sonderrufzeichen, Event-Calls, DXpeditions und seltene Ausnahmen können trotz großer Liste weiterhin Spezialfälle sein.
+
+Datei:
+- src/main.js

@@ -1,0 +1,31 @@
+Schippi's Ham&Cheese – quadratisches App-Icon mit grünem Rand
+
+In diesem Paket wurde das App-Icon ersetzt:
+- quadratisches Icon
+- nichts wird angeschnitten
+- grüner Rand für bessere Erkennbarkeit
+
+Bereits vorbereitet:
+- neue Icon-Datei im Ordner icon_assets
+- Android-Launcher-Icons in den mipmap-Ordnern ersetzt
+
+Danach bitte im Projektordner ausführen:
+
+npm install
+npm run build
+npx cap sync android
+npx cap open android
+
+Falls Android Studio noch das alte Icon zeigt:
+1. Build > Clean Project
+2. Build > Rebuild Project
+3. App ggf. auf dem Handy einmal deinstallieren und neu installieren
+
+Falls du das Icon in Android Studio manuell neu setzen willst:
+1. Rechtsklick auf android/app/src/main/res
+2. New > Image Asset
+3. Bild wählen:
+   icon_assets/schippis_ham_cheese_icon_square.png
+4. Name:
+   ic_launcher
+5. Finish

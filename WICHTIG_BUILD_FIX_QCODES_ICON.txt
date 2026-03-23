@@ -1,0 +1,35 @@
+Schippi's Ham&Cheese – Komplettfix
+
+Dieses Paket behebt drei Dinge gleichzeitig:
+1. Android-App-Name Build-Fehler (strings.xml / manifest)
+2. Q-Codes im unteren Feld
+3. Icon-Dateien für Android-Launcher
+
+Bitte ganz wichtig:
+- ZIP in einen NEUEN Ordner entpacken
+- NICHT im alten problematischen Projektordner weiterbauen
+- alte App auf dem Handy löschen
+
+Dann genau diese Reihenfolge:
+
+npm install
+npm run build
+npx cap add android
+npx cap sync android
+npx cap open android
+
+Wenn android bereits existiert und Probleme macht:
+- android-Ordner löschen
+- dann erneut:
+  npx cap add android
+  npx cap sync android
+
+Danach in Android Studio:
+- Build > Clean Project
+- Build > Rebuild Project
+
+Behoben:
+- app_name ist Android-sicher gesetzt
+- QSO / QSY / QRZ / QTH usw. werden wieder erkannt
+- Locator / Rufzeichen bleiben funktionsfähig
+- Launcher-Icons wurden ersetzt
