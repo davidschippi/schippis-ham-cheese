@@ -1,15 +1,26 @@
 # Schippi's Ham&Cheese
 
-Amateurfunk-Toolkit App (Locator, Q-Codes, Entfernung, Karte, etc.)
+Ein mobiles Amateurfunk-Toolkit mit Fokus auf Praxisbetrieb (Portable / Field).
 
-## Features
-- GPS + Locator
-- Q-Code Erkennung
-- Entfernung & Richtung
-- Kartenintegration
-- Frequenzempfehlung
+---
 
-## Setup
+## 🚀 Features
+
+- 📡 Rufzeichen-Erkennung
+- 🌍 Locator (Maidenhead) Unterstützung
+- 📍 GPS Standort + Zeit + Datum
+- 🧭 Entfernung & Richtung zur Gegenstation
+- 🗺️ Google Maps Integration
+- 📶 Band-/Frequenz-Empfehlung
+- 🔤 Q-Code Erkennung (umfangreiche Liste)
+- 📋 Copy & Share Funktion (WhatsApp etc.)
+- 💾 Speicherung von Name & Rufzeichen
+- 🌙 Dark / Light Mode
+- 📍 Adresse → Locator Umrechnung
+
+---
+
+## 🛠️ Setup
 
 ```bash
 npm install
