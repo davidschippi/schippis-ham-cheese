@@ -1,0 +1,11 @@
+Fixes in this package:
+- Tab switch now keeps entered data by storing/restoring form state
+- Reference location for band recommendation now uses stored geo data instead of transient DOM text
+- Propagation now tries HamQSL first and falls back to NOAA SWPC JSON if HamQSL is blocked/unavailable
+- Language selector removed; app auto-uses German on de system locale, English otherwise
+- French removed from UI selection
+- GPS status badge moved next to 'Mein Standort' / 'My location'
+- 'GPS löschen' / 'Clear GPS' changed to 'Reset'
+- Theme button now shows icon only
+- Coordinate info fields changed to 4 long stacked fields
+- Android strings.xml includes both app_name and title_activity_main with safe app name

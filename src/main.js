@@ -6,14 +6,73 @@ import tzLookup from 'tz-lookup';
 
 const app = document.getElementById('app');
 
+function detectInitialLang() {
+  const saved = localStorage.getItem('lang');
+  if (saved === 'de' || saved === 'en') return saved;
+  const sys = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+  return sys.startsWith('de') ? 'de' : 'en';
+}
+
 const state = {
   myPos: null,                 // aktuell angezeigter Locator / obere Felder
+  myGeo: null,                 // reverse-geocoded location for myPos
   dxPos: null,                 // Gegenstation
   gpsActualTimeZone: null,     // echte aktuelle Geräte-/GPS-Standortzeit
   myCallsign: localStorage.getItem('myCallsign') || '',
   myName: localStorage.getItem('myName') || '',
+  lang: detectInitialLang(),
+  addrQuery: localStorage.getItem('addrQuery') || '',
+  dxCallInput: localStorage.getItem('dxCallInput') || '',
+  dxCoordsInput: localStorage.getItem('dxCoordsInput') || '',
+  activeTab: localStorage.getItem('activeTab') || 'tools',
+  weather: null,
+  solar: null,
+  weatherLoading: false,
+  solarLoading: false,
+  lastEnvFetch: 0,
   clockTimer: null,
+  gpsLoading: false,
 };
+
+function persistCoreState() {
+  localStorage.setItem('addrQuery', state.addrQuery || '');
+  localStorage.setItem('dxCallInput', state.dxCallInput || '');
+  localStorage.setItem('dxCoordsInput', state.dxCoordsInput || '');
+  if (state.myPos) localStorage.setItem('myPos', JSON.stringify(state.myPos));
+  else localStorage.removeItem('myPos');
+  if (state.myGeo) localStorage.setItem('myGeo', JSON.stringify(state.myGeo));
+  else localStorage.removeItem('myGeo');
+  if (state.gpsActualTimeZone) localStorage.setItem('gpsActualTimeZone', state.gpsActualTimeZone);
+  else localStorage.removeItem('gpsActualTimeZone');
+  if (state.solar) localStorage.setItem('solarCache', JSON.stringify(state.solar));
+  else localStorage.removeItem('solarCache');
+  if (state.weather) localStorage.setItem('weatherCache', JSON.stringify(state.weather));
+  else localStorage.removeItem('weatherCache');
+  localStorage.setItem('lastEnvFetch', String(state.lastEnvFetch || 0));
+}
+
+function restoreCoreState() {
+  try {
+    const myPos = JSON.parse(localStorage.getItem('myPos') || 'null');
+    if (Array.isArray(myPos) && myPos.length === 2) state.myPos = myPos;
+  } catch {}
+  try {
+    const myGeo = JSON.parse(localStorage.getItem('myGeo') || 'null');
+    if (myGeo && typeof myGeo === 'object') state.myGeo = myGeo;
+  } catch {}
+  state.gpsActualTimeZone = localStorage.getItem('gpsActualTimeZone') || state.gpsActualTimeZone;
+  try {
+    const solar = JSON.parse(localStorage.getItem('solarCache') || 'null');
+    if (solar && typeof solar === 'object') state.solar = solar;
+  } catch {}
+  try {
+    const weather = JSON.parse(localStorage.getItem('weatherCache') || 'null');
+    if (weather && typeof weather === 'object') state.weather = weather;
+  } catch {}
+  state.lastEnvFetch = Number(localStorage.getItem('lastEnvFetch') || '0') || 0;
+}
+
+restoreCoreState();
 
 const prefixes = [
   { p: '4U_ITU', country: 'ITU HQ', cq: '-', itu: '-' },
@@ -834,12 +893,12 @@ function bearingText(deg) {
 function bandRecommendation(distanceKm) {
   const hour = new Date().getHours();
   const day = hour >= 7 && hour < 19;
-  if (distanceKm < 30) return { band: '2 m / 70 cm', reason: 'sehr kurze Distanz, lokal am einfachsten' };
-  if (distanceKm < 150) return { band: day ? '2 m / 70 cm oder 10 m' : '80 m / 40 m', reason: 'regionaler Bereich' };
-  if (distanceKm < 500) return { band: day ? '20 m / 15 m' : '40 m / 80 m', reason: 'mittlere Distanz' };
-  if (distanceKm < 1500) return { band: day ? '20 m / 17 m' : '40 m', reason: 'klassischer DX-Bereich' };
-  if (distanceKm < 4000) return { band: day ? '20 m / 15 m / 10 m' : '40 m / 30 m', reason: 'weite Entfernung' };
-  return { band: day ? '20 m / 15 m / 10 m' : '40 m / 20 m', reason: 'sehr weite DX-Verbindung' };
+  if (distanceKm < 30) return { band: '2 m / 70 cm', reason: tr('localShort') };
+  if (distanceKm < 150) return { band: day ? '2 m / 70 cm or 10 m' : '80 m / 40 m', reason: tr('regional') };
+  if (distanceKm < 500) return { band: day ? '20 m / 15 m' : '40 m / 80 m', reason: tr('medium') };
+  if (distanceKm < 1500) return { band: day ? '20 m / 17 m' : '40 m', reason: tr('classicDx') };
+  if (distanceKm < 4000) return { band: day ? '20 m / 15 m / 10 m' : '40 m / 30 m', reason: tr('wide') };
+  return { band: day ? '20 m / 15 m / 10 m' : '40 m / 20 m', reason: tr('veryWide') };
 }
 
 async function reverseGeocode(lat, lon) {
@@ -894,7 +953,7 @@ function myDataText() {
 }
 
 function editMyName() {
-  const val = window.prompt('Name eingeben oder ändern:', state.myName || '');
+  const val = window.prompt(tr('promptName'), state.myName || '');
   if (val === null) return;
   state.myName = val.trim();
   localStorage.setItem('myName', state.myName);
@@ -903,7 +962,7 @@ function editMyName() {
 }
 
 function editMyCallsign() {
-  const val = window.prompt('Rufzeichen eingeben oder ändern:', state.myCallsign || '');
+  const val = window.prompt(tr('promptCallsign'), state.myCallsign || '');
   if (val === null) return;
   state.myCallsign = val.trim().toUpperCase();
   localStorage.setItem('myCallsign', state.myCallsign);
@@ -911,95 +970,1101 @@ function editMyCallsign() {
   if (btn) btn.textContent = state.myCallsign || 'Rufzeichen eingeben';
 }
 
+
+const translations = {
+  de: {
+    subtitle: "Mit Distanz, Richtung, Karte und Bandempfehlung.",
+    nameEnter: "Name eingeben",
+    callsignEnter: "Rufzeichen eingeben",
+    theme: "☀️ / 🌙",
+    myLocation: "Mein Standort",
+    gpsGet: "GPS holen",
+    gpsClear: "Reset",
+    copyBlock: "Block kopieren",
+    share: "Teilen",
+    copyLocator: "Locator kopieren",
+    notLoaded: "nicht geladen",
+    addressPlaceholder: "Adresse eingeben, um den Locator zu berechnen",
+    addressToLocator: "Adresse → Locator",
+    country: "Land",
+    city: "Stadt",
+    street: "Straße",
+    locator: "Locator",
+    locatorTime: "Locator Zeit",
+    locatorDate: "Locator Datum",
+    gpsTime: "GPS-Standort Zeit",
+    gpsDate: "GPS-Standort Datum",
+    utcTime: "UTC Zeit",
+    utcDate: "UTC Datum",
+    googleCoords: "Google Koordinaten",
+    decimalDegrees: "Dezimalgrad",
+    dms: "Grad Minuten Sekunden",
+    ddm: "Grad Dezimalminuten",
+    remote: "Gegenstation / Kürzel / Landeskenner / Locator",
+    remoteInput: "Rufzeichen, Q-Code, Landeskenner oder Locator",
+    remotePlaceholder: "z. B. DL1ABC, QSO, HB oder JO31QH",
+    coordsField: "Koordinatenfeld",
+    coordsPlaceholder: "Dezimalgrad, DMS oder Grad/Dezimalminuten",
+    bnetza: "BNetzA öffnen",
+    openMap: "Karte öffnen",
+    countryMeaning: "Land / Bedeutung",
+    cqitu: "CQ / ITU / Locator",
+    note: "Hinweis",
+    distance: "Entfernung",
+    bearing: "Richtung / Azimut",
+    bandRec: "Band / Frequenz Empfehlung",
+    map: "Karte",
+    routeMap: "Route / Karte öffnen",
+    qCode: "Q-Code",
+    qCodeDetected: "Q-Code erkannt",
+    locatorDetected: "Locator erkannt",
+    callsignDetected: "Rufzeichen erkannt",
+    coordsDetected: "Koordinaten erkannt",
+    coordsUnknown: "Koordinatenformat nicht erkannt",
+    reverseFailed: "Reverse-Geocoding fehlgeschlagen",
+    setGpsFirst: "erst GPS/Adresse setzen",
+    gpsWaiting: "warte...",
+    gpsLoaded: "geladen",
+    gpsDeleted: "gelöscht",
+    gpsDenied: "Standortberechtigung wurde nicht erteilt.",
+    gpsErrorPrefix: "GPS-Fehler: ",
+    addressSearching: "suche...",
+    addressLoaded: "Adresse geladen",
+    addressErrorPrefix: "Adresssuche: ",
+    enterAddressFirst: "Bitte zuerst eine Adresse eingeben.",
+    shareDialog: "Daten teilen",
+    shareFallback: "Teilen nicht direkt verfügbar. Block wurde in die Zwischenablage kopiert.",
+    promptName: "Name eingeben oder ändern:",
+    promptCallsign: "Rufzeichen eingeben oder ändern:",
+    localShort: "sehr kurze Distanz, lokal am einfachsten",
+    regional: "regionaler Bereich",
+    medium: "mittlere Distanz",
+    classicDx: "klassischer DX-Bereich",
+    wide: "weite Entfernung",
+    veryWide: "sehr weite DX-Verbindung"
+  },
+  en: {
+    subtitle: "With distance, bearing, map and band recommendation.",
+    nameEnter: "Enter name",
+    callsignEnter: "Enter callsign",
+    theme: "☀️ / 🌙",
+    myLocation: "My location",
+    gpsGet: "Get GPS",
+    gpsClear: "Reset",
+    copyBlock: "Copy block",
+    share: "Share",
+    copyLocator: "Copy locator",
+    notLoaded: "not loaded",
+    addressPlaceholder: "Enter address to calculate the locator",
+    addressToLocator: "Address → Locator",
+    country: "Country",
+    city: "City",
+    street: "Street",
+    locator: "Locator",
+    locatorTime: "Locator time",
+    locatorDate: "Locator date",
+    gpsTime: "GPS location time",
+    gpsDate: "GPS location date",
+    utcTime: "UTC time",
+    utcDate: "UTC date",
+    googleCoords: "Google coordinates",
+    decimalDegrees: "Decimal degrees",
+    dms: "Degrees Minutes Seconds",
+    ddm: "Degrees Decimal Minutes",
+    remote: "Remote station / abbreviation / prefix / locator",
+    remoteInput: "Callsign, Q-code, prefix or locator",
+    remotePlaceholder: "e.g. DL1ABC, QSO, HB or JO31QH",
+    coordsField: "Coordinates field",
+    coordsPlaceholder: "Decimal, DMS or degrees/decimal minutes",
+    bnetza: "Open BNetzA",
+    openMap: "Open map",
+    countryMeaning: "Country / meaning",
+    cqitu: "CQ / ITU / Locator",
+    note: "Note",
+    distance: "Distance",
+    bearing: "Bearing / azimuth",
+    bandRec: "Band / frequency recommendation",
+    map: "Map",
+    routeMap: "Open route / map",
+    qCode: "Q-Code",
+    qCodeDetected: "Q-code detected",
+    locatorDetected: "Locator detected",
+    callsignDetected: "Callsign detected",
+    coordsDetected: "Coordinates detected",
+    coordsUnknown: "Coordinate format not recognized",
+    reverseFailed: "Reverse geocoding failed",
+    setGpsFirst: "set GPS/address first",
+    gpsWaiting: "waiting...",
+    gpsLoaded: "loaded",
+    gpsDeleted: "deleted",
+    gpsDenied: "Location permission was not granted.",
+    gpsErrorPrefix: "GPS error: ",
+    addressSearching: "searching...",
+    addressLoaded: "Address loaded",
+    addressErrorPrefix: "Address lookup: ",
+    enterAddressFirst: "Please enter an address first.",
+    shareDialog: "Share data",
+    shareFallback: "Direct sharing is not available. The block was copied to the clipboard.",
+    promptName: "Enter or change name:",
+    promptCallsign: "Enter or change callsign:",
+    localShort: "very short distance, easiest locally",
+    regional: "regional range",
+    medium: "medium distance",
+    classicDx: "classic DX range",
+    wide: "long distance",
+    veryWide: "very long DX distance"
+  },
+  fr: {
+    subtitle: "Avec distance, azimut, carte et recommandation de bande.",
+    nameEnter: "Entrer le nom",
+    callsignEnter: "Entrer l'indicatif",
+    theme: "🌙 / ☀️ Thème",
+    myLocation: "Ma position",
+    gpsGet: "Obtenir GPS",
+    gpsClear: "Effacer GPS",
+    copyBlock: "Copier le bloc",
+    share: "Partager",
+    copyLocator: "Copier le locator",
+    notLoaded: "non chargé",
+    addressPlaceholder: "Entrer une adresse pour calculer le locator",
+    addressToLocator: "Adresse → Locator",
+    country: "Pays",
+    city: "Ville",
+    street: "Rue",
+    locator: "Locator",
+    locatorTime: "Heure du locator",
+    locatorDate: "Date du locator",
+    gpsTime: "Heure de la position GPS",
+    gpsDate: "Date de la position GPS",
+    utcTime: "Heure UTC",
+    googleCoords: "Coordonnées Google",
+    decimalDegrees: "Degrés décimaux",
+    dms: "Degrés Minutes Secondes",
+    ddm: "Degrés Minutes décimales",
+    remote: "Station distante / abréviation / préfixe / locator",
+    remoteInput: "Indicatif, Q-code, préfixe ou locator",
+    remotePlaceholder: "p. ex. DL1ABC, QSO, HB ou JO31QH",
+    coordsField: "Champ coordonnées",
+    coordsPlaceholder: "Décimal, DMS ou degrés/minutes décimales",
+    bnetza: "Ouvrir BNetzA",
+    openMap: "Ouvrir la carte",
+    countryMeaning: "Pays / signification",
+    cqitu: "CQ / ITU / Locator",
+    note: "Remarque",
+    distance: "Distance",
+    bearing: "Direction / azimut",
+    bandRec: "Recommandation bande / fréquence",
+    legalRec: "Autorisé N / E / A",
+    map: "Carte",
+    routeMap: "Ouvrir l'itinéraire / la carte",
+    qCode: "Q-Code",
+    qCodeDetected: "Q-code détecté",
+    locatorDetected: "Locator détecté",
+    callsignDetected: "Indicatif détecté",
+    coordsDetected: "Coordonnées détectées",
+    coordsUnknown: "Format de coordonnées non reconnu",
+    reverseFailed: "Échec du géocodage inverse",
+    setGpsFirst: "définir GPS/adresse d'abord",
+    gpsWaiting: "attente...",
+    gpsLoaded: "chargé",
+    gpsDeleted: "supprimé",
+    gpsDenied: "L'autorisation de localisation n'a pas été accordée.",
+    gpsErrorPrefix: "Erreur GPS : ",
+    addressSearching: "recherche...",
+    addressLoaded: "Adresse chargée",
+    addressErrorPrefix: "Recherche d'adresse : ",
+    enterAddressFirst: "Veuillez d'abord entrer une adresse.",
+    shareDialog: "Partager les données",
+    shareFallback: "Le partage direct n'est pas disponible. Le bloc a été copié dans le presse-papiers.",
+    promptName: "Entrer ou modifier le nom :",
+    promptCallsign: "Entrer ou modifier l'indicatif :",
+    localShort: "très courte distance, le plus simple en local",
+    regional: "portée régionale",
+    medium: "distance moyenne",
+    classicDx: "portée DX classique",
+    wide: "longue distance",
+    veryWide: "très longue distance DX"
+  }
+};
+
+function tr(key) {
+  const dict = translations[state.lang] || translations.de;
+  return dict[key] || translations.de[key] || key;
+}
+
+
+Object.assign(translations.de, {
+  tabTools: 'Tools',
+  tabBands: 'Bandempfehlung',
+  tabClasses: 'DE Klassen',
+  tabProp: 'Propagation',
+  tabWeather: 'Wetter',
+  bandEngineTitle: 'Bandempfehlung nach Standort, Tageszeit und Funkwetter',
+  bandEngineText: 'Die Empfehlung nutzt deinen gesetzten Standort oder eine eingegebene Adresse. Rufzeichen sind dafür nicht nötig.',
+  envMissing: 'Bitte zuerst GPS holen oder eine Adresse setzen.',
+  refreshData: 'Daten aktualisieren',
+  solarWeather: 'Funkwetter / Wetter',
+  season: 'Jahreszeit',
+  daylight: 'Tagesphase',
+  bestBandsNow: 'Beste Bänder jetzt',
+  likelyBandsLater: 'Später interessant',
+  whyNow: 'Warum gerade jetzt',
+  noDataYet: 'Noch keine Daten geladen',
+  genericNotice: 'Allgemeine Empfehlung. Rechtlich maßgeblich bleibt der jeweilige nationale Bandplan.',
+  dePlanTitle: 'Kurzer Band- und Frequenzplan für Deutschland',
+  classN: 'Klasse N',
+  classE: 'Klasse E',
+  classA: 'Klasse A',
+  privileges: 'Bänder / Bereiche',
+  power: 'Leistung',
+  usage: 'Typisch gut für',
+  propagationTitle: 'Propagation nach HamQSL-Vorbild',
+  hfCond: 'HF Conditions',
+  vhfCond: 'VHF Conditions',
+  updated: 'Aktualisiert',
+  source: 'Quelle',
+  weatherTitle: 'Wetter am gesetzten Standort',
+  temperature: 'Temperatur',
+  wind: 'Wind',
+  cloudcover: 'Bewölkung',
+  precipitation: 'Niederschlag',
+  sunrise: 'Sonnenaufgang',
+  sunset: 'Sonnenuntergang',
+  weatherNote: 'Wetter beeinflusst nicht direkt die Ionosphäre, ist aber wichtig für Portabelbetrieb, Sicherheit und Tageslicht.',
+  loading: 'lädt...',
+  fair: 'mäßig',
+  good: 'gut',
+  poor: 'schlecht',
+  excellent: 'sehr gut',
+  closed: 'geschlossen',
+  currentLocationLabel: 'Aktueller Referenz-Standort',
+  de6mNote: 'Hinweis: 6 m ist seit 2026 nicht mehr per Duldung für Klasse E freigegeben.',
+  useAddressTip: 'Tipp: Über die Adresssuche kannst du jeden Ort weltweit als Basis für die Empfehlung setzen.'
+});
+
+Object.assign(translations.en, {
+  tabTools: 'Tools',
+  tabBands: 'Band recommendation',
+  tabClasses: 'DE classes',
+  tabProp: 'Propagation',
+  tabWeather: 'Weather',
+  bandEngineTitle: 'Band recommendation by location, time of day and radio weather',
+  bandEngineText: 'This uses your current position or an entered address. A callsign is not required.',
+  envMissing: 'Please get GPS or set an address first.',
+  refreshData: 'Refresh data',
+  solarWeather: 'Radio weather / weather',
+  season: 'Season',
+  daylight: 'Day phase',
+  bestBandsNow: 'Best bands now',
+  likelyBandsLater: 'Interesting later',
+  whyNow: 'Why right now',
+  noDataYet: 'No data loaded yet',
+  genericNotice: 'General recommendation. The national band plan remains legally decisive.',
+  dePlanTitle: 'Short band and frequency plan for Germany',
+  classN: 'Class N',
+  classE: 'Class E',
+  classA: 'Class A',
+  privileges: 'Bands / ranges',
+  power: 'Power',
+  usage: 'Typically good for',
+  propagationTitle: 'Propagation in HamQSL style',
+  hfCond: 'HF Conditions',
+  vhfCond: 'VHF Conditions',
+  updated: 'Updated',
+  source: 'Source',
+  weatherTitle: 'Weather at the selected location',
+  temperature: 'Temperature',
+  wind: 'Wind',
+  cloudcover: 'Cloud cover',
+  precipitation: 'Precipitation',
+  sunrise: 'Sunrise',
+  sunset: 'Sunset',
+  weatherNote: 'Weather does not directly drive the ionosphere, but it matters for portable operation, safety and daylight.',
+  loading: 'loading...',
+  fair: 'fair',
+  good: 'good',
+  poor: 'poor',
+  excellent: 'excellent',
+  closed: 'closed',
+  currentLocationLabel: 'Current reference location',
+  de6mNote: 'Note: since 2026, class E no longer has the tolerated 6 m access.',
+  useAddressTip: 'Tip: the address search lets you use any place worldwide as the basis for the recommendation.'
+});
+
+Object.assign(translations.fr, {
+  tabTools: 'Outils',
+  tabBands: 'Recommandation de bande',
+  tabClasses: 'Classes DE',
+  tabProp: 'Propagation',
+  tabWeather: 'Météo',
+  bandEngineTitle: "Recommandation selon la position, l'heure et la météo radio",
+  bandEngineText: "Utilise la position actuelle ou une adresse saisie. Un indicatif n'est pas nécessaire.",
+  envMissing: "Veuillez d'abord obtenir le GPS ou définir une adresse.",
+  refreshData: 'Actualiser',
+  solarWeather: 'Météo radio / météo',
+  season: 'Saison',
+  daylight: 'Phase du jour',
+  bestBandsNow: 'Meilleures bandes maintenant',
+  likelyBandsLater: 'Intéressant plus tard',
+  whyNow: 'Pourquoi maintenant',
+  noDataYet: 'Aucune donnée chargée',
+  genericNotice: 'Recommandation générale. Le plan de bande national reste juridiquement déterminant.',
+  dePlanTitle: "Plan court des bandes et fréquences pour l'Allemagne",
+  classN: 'Classe N',
+  classE: 'Classe E',
+  classA: 'Classe A',
+  privileges: 'Bandes / plages',
+  power: 'Puissance',
+  usage: 'Typiquement bon pour',
+  propagationTitle: 'Propagation style HamQSL',
+  hfCond: 'Conditions HF',
+  vhfCond: 'Conditions VHF',
+  updated: 'Mis à jour',
+  source: 'Source',
+  weatherTitle: 'Météo pour la position choisie',
+  temperature: 'Température',
+  wind: 'Vent',
+  cloudcover: 'Nébulosité',
+  precipitation: 'Précipitations',
+  sunrise: 'Lever du soleil',
+  sunset: 'Coucher du soleil',
+  weatherNote: "La météo n'agit pas directement sur l'ionosphère, mais elle compte pour le portable, la sécurité et la lumière du jour.",
+  loading: 'chargement...',
+  fair: 'moyen',
+  good: 'bon',
+  poor: 'faible',
+  excellent: 'très bon',
+  closed: 'fermé',
+  currentLocationLabel: 'Position de référence actuelle',
+  de6mNote: "Remarque : depuis 2026, la classe E n'a plus d'accès toléré au 6 m.",
+  useAddressTip: "Astuce : la recherche d'adresse permet d'utiliser n'importe quel lieu comme base de recommandation."
+});
+
+function qcodeText(code, fallback) {
+  const maps = {
+    de: {
+      QSO: "Funkverbindung / Kann mit … in Verbindung treten",
+      QSY: "Frequenzwechsel auf … kHz",
+      QRZ: "Wer ruft mich? / Sie werden gerufen von …",
+      QTH: "Mein Standort ist … / Standort",
+      QRM: "Werde durch andere Sender gestört",
+      QRN: "Habe Störungen durch Statik",
+      QRP: "Vermindere die Sendeleistung",
+      QRO: "Erhöhe die Sendeleistung",
+      QRT: "Ende der Sendung / Sendebetrieb einstellen",
+      QRV: "Bin empfangsbereit / betriebsbereit",
+      QSL: "Empfang bestätigt / QSL-Karte",
+      QSB: "Ihr Signal hat Fading (Schwund)",
+      QRX: "Bitte warten / ich rufe später",
+      QTC: "Habe Nachrichten für Sie",
+      QTR: "Die genaue Zeit ist … UTC"
+    },
+    en: {
+      QSO: "Radio contact / Can communicate with …",
+      QSY: "Change frequency to … kHz",
+      QRZ: "Who is calling me? / You are being called by …",
+      QTH: "My location is … / location",
+      QRM: "Interference from other stations",
+      QRN: "Static / atmospheric noise",
+      QRP: "Reduce transmitter power",
+      QRO: "Increase transmitter power",
+      QRT: "Stop transmitting / end of transmission",
+      QRV: "Ready / operational",
+      QSL: "Reception confirmed / QSL card",
+      QSB: "Signal fading",
+      QRX: "Please wait / I will call later",
+      QTC: "I have messages for you",
+      QTR: "The exact time is … UTC"
+    },
+    fr: {
+      QSO: "Contact radio / Peut communiquer avec …",
+      QSY: "Changer de fréquence vers … kHz",
+      QRZ: "Qui m'appelle ? / Vous êtes appelé par …",
+      QTH: "Ma position est … / position",
+      QRM: "Brouillage d'autres stations",
+      QRN: "Parasites atmosphériques",
+      QRP: "Réduire la puissance d'émission",
+      QRO: "Augmenter la puissance d'émission",
+      QRT: "Arrêt d'émission / fin de transmission",
+      QRV: "Prêt / opérationnel",
+      QSL: "Réception confirmée / carte QSL",
+      QSB: "Évanouissement du signal",
+      QRX: "Veuillez attendre / j'appellerai plus tard",
+      QTC: "J'ai des messages pour vous",
+      QTR: "L'heure exacte est … UTC"
+    }
+  };
+  return (maps[state.lang] && maps[state.lang][code]) || fallback || code;
+}
+
+function classFrequencyRecommendation(distanceKm) {
+  const hour = new Date().getHours();
+  const day = hour >= 7 && hour < 19;
+  if (distanceKm < 30) return { n: "144–146 / 430–440 MHz", e: "144–146 / 430–440 MHz", a: "144–146 / 430–440 MHz" };
+  if (distanceKm < 150) return { n: day ? "28.0–29.7 or 144–146 MHz" : "144–146 / 430–440 MHz", e: day ? "28.0–29.7 or 144–146 MHz" : "7.0–7.2 or 144–146 MHz", a: day ? "28.0–29.7 or 144–146 MHz" : "7.0–7.2 or 3.5–3.8 MHz" };
+  if (distanceKm < 500) return { n: "28.0–29.7 MHz", e: day ? "28.0–29.7 MHz" : "7.0–7.2 MHz", a: day ? "14.0–14.35 MHz" : "7.0–7.2 or 3.5–3.8 MHz" };
+  if (distanceKm < 1500) return { n: "28.0–29.7 MHz", e: day ? "28.0–29.7 MHz" : "7.0–7.2 MHz", a: day ? "14.0–14.35 / 18.068–18.168 MHz" : "7.0–7.2 MHz" };
+  if (distanceKm < 4000) return { n: "28.0–29.7 MHz", e: "21.0–21.45 / 28.0–29.7 MHz", a: day ? "14.0–14.35 / 21.0–21.45 MHz" : "10.1–10.15 / 7.0–7.2 MHz" };
+  return { n: "28.0–29.7 MHz", e: "21.0–21.45 / 28.0–29.7 MHz", a: day ? "14.0–14.35 / 21.0–21.45 / 28.0–29.7 MHz" : "7.0–7.2 / 14.0–14.35 MHz" };
+}
+
+const DE_CLASS_PLAN = [
+  {
+    nameKey: 'classN',
+    summary: '10 m, 2 m und 70 cm für den Einstieg',
+    privileges: '28.0–29.7 MHz · 144–146 MHz · 430–440 MHz',
+    power: '10 W ERP auf 10 m · 10 W EIRP auf 2 m / 70 cm',
+    usage: 'Einsteiger, Lokalbetrieb, Relais, erste DX-Chancen auf 10 m'
+  },
+  {
+    nameKey: 'classE',
+    summary: 'wichtige KW-Bänder plus VHF/UHF mit mittlerer Leistung',
+    privileges: '160 m · 80 m · 15 m · 10 m · 2 m · 70 cm · 23 cm sowie weitere zugewiesene höhere Bänder',
+    power: 'meist bis 100 W PEP, auf einzelnen Bereichen abweichend',
+    usage: 'Allround, Portabel, SSB/CW/Digital, regionale und viele DX-Verbindungen'
+  },
+  {
+    nameKey: 'classA',
+    summary: 'volle deutsche Amateurfunkklasse',
+    privileges: 'alle deutschen Amateurfunkbänder nach AFuV, inkl. 6 m und den klassischen HF-Bändern',
+    power: 'meist bis 750 W PEP, auf einzelnen Bereichen abweichend',
+    usage: 'maximale Flexibilität auf HF, VHF, UHF und darüber'
+  }
+];
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+
+function fetchWithTimeout(url, opts = {}, timeout = 12000) {
+  return Promise.race([
+    fetch(url, opts),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeout))
+  ]);
+}
+
+function translateConditionWord(value) {
+  const v = String(value || '').toLowerCase();
+  if (v.includes('excellent')) return tr('excellent');
+  if (v.includes('good')) return tr('good');
+  if (v.includes('fair')) return tr('fair');
+  if (v.includes('poor')) return tr('poor');
+  if (v.includes('closed')) return tr('closed');
+  return value || '-';
+}
+
+function seasonForMonth(month) {
+  if ([12, 1, 2].includes(month)) return state.lang === 'en' ? 'winter' : 'Winter';
+  if ([3, 4, 5].includes(month)) return state.lang === 'en' ? 'spring' : 'Frühling';
+  if ([6, 7, 8].includes(month)) return state.lang === 'en' ? 'summer' : 'Sommer';
+  return state.lang === 'en' ? 'autumn' : 'Herbst';
+}
+
+function dayPhase(weather) {
+  const nowHour = new Date().getHours();
+  const sunrise = weather?.sunrise ? new Date(weather.sunrise) : null;
+  const sunset = weather?.sunset ? new Date(weather.sunset) : null;
+  if (sunrise && sunset) {
+    const hour = new Date().getHours() + new Date().getMinutes() / 60;
+    const sr = sunrise.getHours() + sunrise.getMinutes() / 60;
+    const ss = sunset.getHours() + sunset.getMinutes() / 60;
+    if (hour < sr || hour >= ss) return state.lang === 'en' ? 'night' : 'Nacht';
+    if (hour < sr + 1.5 || hour > ss - 1.5) return state.lang === 'en' ? 'dawn / dusk' : 'Dämmerung';
+    return state.lang === 'en' ? 'day' : 'Tag';
+  }
+  return nowHour >= 7 && nowHour < 19 ? (state.lang === 'en' ? 'day' : 'Tag') : (state.lang === 'en' ? 'night' : 'Nacht');
+}
+
+function parseXmlTag(xml, tag) {
+  const m = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i'));
+  return m ? m[1].trim() : '';
+}
+
+function parseSolarXml(xml) {
+  const hfSection = parseXmlTag(xml, 'calculatedconditions');
+  const hf = {};
+  Array.from(hfSection.matchAll(/<band[^>]*name="([^"]+)"[^>]*time="([^"]+)"[^>]*>([^<]+)</gi)).forEach((m) => {
+    const band = m[1].trim();
+    const time = m[2].trim().toLowerCase();
+    hf[band] ||= {};
+    hf[band][time] = m[3].trim();
+  });
+  const vhfSection = parseXmlTag(xml, 'calculatedvhfconditions');
+  const vhf = {};
+  Array.from(vhfSection.matchAll(/<phenomenon[^>]*name="([^"]+)"[^>]*>([^<]+)</gi)).forEach((m) => {
+    vhf[m[1].trim()] = m[2].trim();
+  });
+  return {
+    updated: parseXmlTag(xml, 'updated') || parseXmlTag(xml, 'solardata_updated'),
+    source: 'HamQSL',
+    solarflux: parseXmlTag(xml, 'solarflux') || '-',
+    aindex: parseXmlTag(xml, 'aindex') || '-',
+    kindex: parseXmlTag(xml, 'kindex') || '-',
+    sunspots: parseXmlTag(xml, 'sunspots') || '-',
+    xray: parseXmlTag(xml, 'xray') || '-',
+    signalnoise: parseXmlTag(xml, 'signalnoise') || '-',
+    geomagfield: parseXmlTag(xml, 'geomagfield') || '-',
+    aurora: parseXmlTag(xml, 'aurora') || '-',
+    hf,
+    vhf
+  };
+}
+
+
+function deriveConditionsFromIndices(sfiRaw, kpRaw) {
+  const sfi = Number(sfiRaw || 0);
+  const kp = Number(kpRaw || 0);
+  const score = sfi - kp * 8;
+  const word = (v) => v >= 125 ? 'Good' : v >= 95 ? 'Fair' : 'Poor';
+  const upperDay = word(score);
+  const midDay = word(score + 10);
+  const lowNight = word(score + 5);
+  const upperNight = word(score - 15);
+  const vhfWord = kp >= 5 ? 'Fair' : kp >= 3 ? 'Poor' : 'Poor';
+  return {
+    hf: {
+      '80m-40m': { day: word(score - 10), night: lowNight },
+      '30m-20m': { day: midDay, night: word(score - 5) },
+      '17m-15m': { day: upperDay, night: upperNight },
+      '12m-10m': { day: word(score - 10), night: 'Poor' }
+    },
+    vhf: {
+      '2m Tropo': vhfWord,
+      '6m': word(score - 5)
+    }
+  };
+}
+
+function buildOfflineSolarFallback() {
+  const now = new Date().toISOString();
+  const derived = deriveConditionsFromIndices(110, 3);
+  return {
+    updated: now,
+    source: 'Offline fallback',
+    solarflux: '110',
+    aindex: '-',
+    kindex: '3',
+    sunspots: '-',
+    xray: '-',
+    signalnoise: '-',
+    geomagfield: '-',
+    aurora: '-',
+    hf: derived.hf,
+    vhf: derived.vhf
+  };
+}
+
+function hasUsableSolarData(s) {
+  return !!(s && (s.solarflux && s.solarflux !== '-' || s.kindex && s.kindex !== '-' || Object.keys(s.hf || {}).length || Object.keys(s.vhf || {}).length));
+}
+
+async function fetchNoaaSolarFallback() {
+  const [fluxRes, kpRes] = await Promise.all([
+    fetchWithTimeout('https://services.swpc.noaa.gov/json/f107_cm_flux.json'),
+    fetchWithTimeout('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json')
+  ]);
+  const fluxJson = await fluxRes.json();
+  const kpJson = await kpRes.json();
+  const latestFlux = Array.isArray(fluxJson) ? [...fluxJson].reverse().find((x) => x?.flux != null) : null;
+  const latestKp = Array.isArray(kpJson) && kpJson.length > 1 ? kpJson[kpJson.length - 1] : null;
+  const solarflux = latestFlux?.flux != null ? String(latestFlux.flux) : '-';
+  const kindex = latestKp?.[1] != null ? String(latestKp[1]) : '-';
+  const derived = deriveConditionsFromIndices(solarflux, kindex);
+  return {
+    updated: latestFlux?.time_tag || latestKp?.[0] || new Date().toISOString(),
+    source: 'NOAA SWPC',
+    solarflux,
+    aindex: '-',
+    kindex,
+    sunspots: '-',
+    xray: '-',
+    signalnoise: '-',
+    geomagfield: '-',
+    aurora: '-',
+    hf: derived.hf,
+    vhf: derived.vhf
+  };
+}
+
+async function fetchSolarData(force = false) {
+  if (state.solarLoading) return state.solar;
+  if (!hasUsableSolarData(state.solar)) {
+    state.solar = buildOfflineSolarFallback();
+    persistCoreState();
+  }
+  if (!force && hasUsableSolarData(state.solar) && (Date.now() - state.lastEnvFetch) < 15 * 60 * 1000) return state.solar;
+  state.solarLoading = true;
+  try {
+    const res = await fetchWithTimeout('https://www.hamqsl.com/solarxml.php');
+    const xml = await res.text();
+    const parsed = parseSolarXml(xml);
+    if (!parsed || (!parsed.solarflux && !parsed.kindex && !Object.keys(parsed.hf || {}).length && !Object.keys(parsed.vhf || {}).length)) {
+      throw new Error('HamQSL returned no usable solar data');
+    }
+    state.solar = parsed;
+    state.lastEnvFetch = Date.now();
+    persistCoreState();
+    return state.solar;
+  } catch (err) {
+    console.error('solar fetch failed, using NOAA fallback', err);
+    try {
+      state.solar = await fetchNoaaSolarFallback();
+      state.lastEnvFetch = Date.now();
+      persistCoreState();
+      return state.solar;
+    } catch (fallbackErr) {
+      console.error('NOAA solar fallback failed', fallbackErr);
+      if (state.solar) return state.solar;
+      state.solar = buildOfflineSolarFallback();
+      state.lastEnvFetch = Date.now();
+      persistCoreState();
+      return state.solar;
+    }
+  } finally {
+    state.solarLoading = false;
+  }
+}
+
+async function fetchWeatherForPosition(lat, lon, force = false) {
+  if (lat == null || lon == null) return null;
+  if (state.weatherLoading) return state.weather;
+  if (!force && state.weather && state.weather.lat === lat && state.weather.lon === lon && (Date.now() - state.lastEnvFetch) < 15 * 60 * 1000) return state.weather;
+  state.weatherLoading = true;
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&current=temperature_2m,cloud_cover,wind_speed_10m,precipitation,is_day&daily=sunrise,sunset&timezone=auto&forecast_days=1`;
+    const res = await fetchWithTimeout(url);
+    const json = await res.json();
+    state.weather = {
+      lat,
+      lon,
+      source: 'Open-Meteo',
+      current: json.current || {},
+      sunrise: json.daily?.sunrise?.[0] || '',
+      sunset: json.daily?.sunset?.[0] || ''
+    };
+    persistCoreState();
+    return state.weather;
+  } catch (err) {
+    console.error('weather fetch failed', err);
+    return state.weather;
+  } finally {
+    state.weatherLoading = false;
+  }
+}
+
+async function ensureEnvironmentData(force = false) {
+  if (!state.myPos) return;
+  await Promise.allSettled([
+    fetchSolarData(force),
+    fetchWeatherForPosition(state.myPos[0], state.myPos[1], force)
+  ]);
+  state.lastEnvFetch = Date.now();
+  updateDynamicPanels();
+}
+
+function getCurrentCountryLabel() {
+  if (state.myGeo) {
+    const parts = [state.myGeo.city, state.myGeo.country].filter(Boolean);
+    if (parts.length) return parts.join(', ');
+    if (state.myGeo.street) return state.myGeo.street;
+  }
+  if (state.myPos) return maiden(state.myPos[0], state.myPos[1]);
+  return '-';
+}
+
+function buildBandAdvice() {
+  if (!state.myPos) return null;
+  const weather = state.weather;
+  const solar = state.solar;
+  const month = new Date().getMonth() + 1;
+  const season = seasonForMonth(month);
+  const phase = dayPhase(weather);
+  const isDay = weather?.current?.is_day === 1 || /Tag|day|jour/.test(phase);
+  const solarFlux = Number(solar?.solarflux || 0);
+  const kIndex = Number(solar?.kindex || 99);
+  const hf12 = String(solar?.hf?.['12m-10m']?.day || '').toLowerCase();
+  const hf17 = String(solar?.hf?.['17m-15m']?.day || '').toLowerCase();
+  const vhf2m = String(solar?.vhf?.['2m EsEU'] || solar?.vhf?.['2m EsNA'] || solar?.vhf?.['Aurora'] || '').toLowerCase();
+
+  let best = [];
+  let later = [];
+  let why = [];
+
+  if (!isDay) {
+    best.push('40 m · 7.0–7.2 MHz');
+    best.push('80 m · 3.5–3.8 MHz');
+    why.push(state.lang === 'en' ? 'After sunset, lower HF bands usually become easier for regional to medium paths.' : state.lang === 'fr' ? 'Après le coucher du soleil, les bandes HF basses deviennent souvent plus faciles pour les liaisons régionales à moyennes.' : 'Nach Sonnenuntergang werden die unteren HF-Bänder meist einfacher für regionale bis mittlere Strecken.');
+    later.push('20 m · 14.0–14.35 MHz am Morgen');
+  } else {
+    best.push('20 m · 14.0–14.35 MHz');
+    why.push(state.lang === 'en' ? '20 m is the safest daytime all-rounder for many paths.' : state.lang === 'fr' ? '20 m est le meilleur choix polyvalent de jour pour de nombreuses liaisons.' : '20 m ist tagsüber meist das sicherste Allround-Band für viele Strecken.');
+    if (solarFlux >= 120 || hf17.includes('good') || hf17.includes('fair')) {
+      best.push('15 m · 21.0–21.45 MHz');
+      later.push('17 m · 18.068–18.168 MHz');
+      why.push(state.lang === 'en' ? 'Current solar values support the upper HF bands better than usual.' : state.lang === 'fr' ? 'Les valeurs solaires actuelles soutiennent mieux que d\'habitude les bandes HF supérieures.' : 'Die aktuellen Solarwerte stützen die oberen HF-Bänder besser als üblich.');
+    }
+    if (solarFlux >= 140 || hf12.includes('good')) {
+      best.push('10 m · 28.0–29.7 MHz');
+      why.push(state.lang === 'en' ? '10 m currently has a realistic chance because the solar situation is strong enough.' : state.lang === 'fr' ? '10 m a actuellement une vraie chance, car la situation solaire est assez forte.' : '10 m hat aktuell echte Chancen, weil die Solarlage stark genug ist.');
+    } else {
+      later.push('10 m · 28.0–29.7 MHz bei besserem Funkwetter');
+    }
+  }
+
+  if (kIndex >= 5) {
+    why.push(state.lang === 'en' ? 'Geomagnetic activity is elevated, so deep DX paths can become less stable. Lower bands are safer.' : state.lang === 'fr' ? 'L\'activité géomagnétique est élevée, donc les longues liaisons DX peuvent être moins stables. Les bandes basses sont plus sûres.' : 'Die geomagnetische Aktivität ist erhöht. Lange DX-Wege können instabiler sein. Tiefere Bänder sind dann oft sicherer.');
+    if (!best.includes('40 m · 7.0–7.2 MHz')) best.push('40 m · 7.0–7.2 MHz');
+  }
+
+  if (vhf2m.includes('open') || vhf2m.includes('fair') || vhf2m.includes('good')) {
+    best.push('2 m · 144–146 MHz');
+    why.push(state.lang === 'en' ? 'VHF conditions show a possible opening for 2 m.' : state.lang === 'fr' ? 'Les conditions VHF montrent une ouverture possible sur 2 m.' : 'Die VHF-Bedingungen zeigen eine mögliche Öffnung auf 2 m.');
+  } else {
+    later.push('2 m / 70 cm lokal und über Relais');
+  }
+
+  if (weather?.current?.precipitation > 0 || (weather?.current?.wind_speed_10m || 0) > 35) {
+    why.push(state.lang === 'en' ? 'Local weather is rough. Electrically this matters less than the ionosphere, but it matters for outdoor setup and antenna safety.' : state.lang === 'fr' ? 'La météo locale est rude. Électriquement c\'est moins important que l\'ionosphère, mais c\'est important pour l\'installation extérieure et la sécurité.' : 'Das lokale Wetter ist rau. Elektrisch zählt eher die Ionosphäre, praktisch aber ist das wichtig für Aufbau und Antennensicherheit.');
+  }
+
+  best = Array.from(new Set(best)).slice(0, 4);
+  later = Array.from(new Set(later.filter((x) => !best.includes(x)))).slice(0, 4);
+
+  return {
+    season,
+    phase,
+    basedOn: getCurrentCountryLabel(),
+    best,
+    later,
+    why
+  };
+}
+
+function renderBandTab() {
+  const advice = buildBandAdvice();
+  const noPropData = !state.solar || (!state.solar.solarflux && !state.solar.kindex && !Object.keys(state.solar.hf || {}).length && !Object.keys(state.solar.vhf || {}).length);
+  if (!advice) {
+    return `<div class="card centerCard"><h2>${tr('bandEngineTitle')}</h2><p>${tr('bandEngineText')}</p><p>${tr('envMissing')}</p><p>${tr('useAddressTip')}</p></div>`;
+  }
+  return `
+    <div class="card centerCard">
+      <h2>${tr('bandEngineTitle')}</h2>
+      <p class="sectionNote">${tr('bandEngineText')}</p>
+      <div class="row centerRow"><button id="refreshEnvBtn" class="primary">${tr('refreshData')}</button></div>
+      ${noPropData ? `<p>${state.lang === 'en' ? 'No live propagation data yet. Tap refresh.' : 'Noch keine Live-Propagation-Daten. Bitte aktualisieren.'}</p>` : ''}
+      <div class="tripleCols centerGridBoxes" style="margin-top:8px">
+        <div class="box"><div class="k">${tr('currentLocationLabel')}</div><div class="v">${escapeHtml(advice.basedOn)}</div></div>
+        <div class="box"><div class="k">${tr('season')}</div><div class="v">${escapeHtml(advice.season)}</div></div>
+        <div class="box"><div class="k">${tr('daylight')}</div><div class="v">${escapeHtml(advice.phase)}</div></div>
+      </div>
+      <div class="singleCenter centerGridBoxes">
+        <div class="box"><div class="k">${tr('solarWeather')}</div><div class="v">SFI ${escapeHtml(state.solar?.solarflux || '-')} · K ${escapeHtml(state.solar?.kindex || '-')} · ${tr('temperature')} ${state.weather?.current?.temperature_2m ?? '-'}°C</div></div>
+      </div>
+    </div>
+    <div class="two">
+      <div class="card centerCard">
+        <h2>${tr('bestBandsNow')}</h2>
+        ${advice.best.map((item) => `<div class="box" style="margin-bottom:8px"><div class="v">${escapeHtml(item)}</div></div>`).join('') || `<p>${tr('noDataYet')}</p>`}
+      </div>
+      <div class="card centerCard">
+        <h2>${tr('likelyBandsLater')}</h2>
+        ${advice.later.map((item) => `<div class="box" style="margin-bottom:8px"><div class="v">${escapeHtml(item)}</div></div>`).join('') || `<p>${tr('noDataYet')}</p>`}
+      </div>
+    </div>
+    <div class="card centerCard">
+      <h2>${tr('whyNow')}</h2>
+      ${advice.why.map((item) => `<p>• ${escapeHtml(item)}</p>`).join('')}
+      <p>${tr('genericNotice')}</p>
+    </div>
+  `;
+}
+
+function renderClassesTab() {
+  return `
+    <div class="card centerCard">
+      <h2>${tr('dePlanTitle')}</h2>
+      <p class="sectionNote">${tr('de6mNote')}</p>
+    </div>
+    <div class="grid centerGridBoxes">
+      ${DE_CLASS_PLAN.map((item) => `
+        <div class="card centerCard">
+          <div class="badge">${tr(item.nameKey)}</div>
+          <h2 style="margin-top:8px">${escapeHtml(item.summary)}</h2>
+          <div class="box" style="margin-bottom:8px"><div class="k">${tr('privileges')}</div><div class="v">${escapeHtml(item.privileges)}</div></div>
+          <div class="box" style="margin-bottom:8px"><div class="k">${tr('power')}</div><div class="v">${escapeHtml(item.power)}</div></div>
+          <div class="box"><div class="k">${tr('usage')}</div><div class="v">${escapeHtml(item.usage)}</div></div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderPropagationTab() {
+  const s = state.solar;
+  const noPropData = !s || (!s.solarflux && !s.kindex && !Object.keys(s.hf || {}).length && !Object.keys(s.vhf || {}).length);
+  return `
+    <div class="card centerCard">
+      <h2>${tr('propagationTitle')}</h2>
+      <div class="row centerRow"><button id="refreshEnvBtn" class="primary">${tr('refreshData')}</button></div>
+      ${noPropData ? `<p>${state.lang === 'en' ? 'No live propagation data yet. Tap refresh.' : 'Noch keine Live-Propagation-Daten. Bitte aktualisieren.'}</p>` : ''}
+      <div class="grid centerGridBoxes" style="margin-top:8px">
+        <div class="box"><div class="k">SFI</div><div class="v">${escapeHtml(s?.solarflux || '-')}</div></div>
+        <div class="box"><div class="k">A-Index</div><div class="v">${escapeHtml(s?.aindex || '-')}</div></div>
+        <div class="box"><div class="k">K-Index</div><div class="v">${escapeHtml(s?.kindex || '-')}</div></div>
+        <div class="box"><div class="k">Sunspots</div><div class="v">${escapeHtml(s?.sunspots || '-')}</div></div>
+        <div class="box"><div class="k">X-Ray</div><div class="v">${escapeHtml(s?.xray || '-')}</div></div>
+        <div class="box"><div class="k">Noise / Geomag</div><div class="v">${escapeHtml(s?.signalnoise || '-')} · ${escapeHtml(s?.geomagfield || '-')}</div></div>
+      </div>
+    </div>
+    <div class="two">
+      <div class="card centerCard">
+        <h2>${tr('hfCond')}</h2>
+        <div class="tripleCols centerGridBoxes">
+          <div class="box"><div class="k">80m-40m</div><div class="v">${translateConditionWord(s?.hf?.['80m-40m']?.day || '-')} / ${translateConditionWord(s?.hf?.['80m-40m']?.night || '-')}</div></div>
+          <div class="box"><div class="k">30m-20m</div><div class="v">${translateConditionWord(s?.hf?.['30m-20m']?.day || '-')} / ${translateConditionWord(s?.hf?.['30m-20m']?.night || '-')}</div></div>
+          <div class="box"><div class="k">17m-15m</div><div class="v">${translateConditionWord(s?.hf?.['17m-15m']?.day || '-')} / ${translateConditionWord(s?.hf?.['17m-15m']?.night || '-')}</div></div>
+        </div>
+        <div class="singleCenter centerGridBoxes">
+          <div class="box"><div class="k">12m-10m</div><div class="v">${translateConditionWord(s?.hf?.['12m-10m']?.day || '-')} / ${translateConditionWord(s?.hf?.['12m-10m']?.night || '-')}</div></div>
+        </div>
+      </div>
+      <div class="card centerCard">
+        <h2>${tr('vhfCond')}</h2>
+        <div class="grid centerGridBoxes">
+          ${Object.entries(s?.vhf || {}).slice(0, 6).map(([k,v]) => `<div class="box"><div class="k">${escapeHtml(k)}</div><div class="v">${translateConditionWord(v)}</div></div>`).join('') || `<p>${tr('noDataYet')}</p>`}
+        </div>
+      </div>
+    </div>
+    <div class="card centerCard footerNote">
+      <p>${tr('updated')}: ${escapeHtml(s?.updated || '-')}</p>
+      <p>${tr('source')}: ${escapeHtml(s?.source || 'HamQSL')}</p>
+    </div>
+  `;
+}
+
+function renderWeatherTab() {
+  const w = state.weather;
+  const noPropData = !state.solar || (!state.solar.solarflux && !state.solar.kindex && !Object.keys(state.solar.hf || {}).length && !Object.keys(state.solar.vhf || {}).length);
+  return `
+    <div class="card centerCard">
+      <h2>${tr('weatherTitle')}</h2>
+      <div class="row centerRow"><button id="refreshEnvBtn" class="primary">${tr('refreshData')}</button></div>
+      ${noPropData ? `<p>${state.lang === 'en' ? 'No live propagation data yet. Tap refresh.' : 'Noch keine Live-Propagation-Daten. Bitte aktualisieren.'}</p>` : ''}
+      <div class="grid centerGridBoxes" style="margin-top:8px">
+        <div class="box"><div class="k">${tr('temperature')}</div><div class="v">${w?.current?.temperature_2m ?? '-'} °C</div></div>
+        <div class="box"><div class="k">${tr('wind')}</div><div class="v">${w?.current?.wind_speed_10m ?? '-'} km/h</div></div>
+        <div class="box"><div class="k">${tr('cloudcover')}</div><div class="v">${w?.current?.cloud_cover ?? '-'} %</div></div>
+        <div class="box"><div class="k">${tr('precipitation')}</div><div class="v">${w?.current?.precipitation ?? '-'} mm</div></div>
+        <div class="box"><div class="k">${tr('sunrise')}</div><div class="v">${w?.sunrise ? new Date(w.sunrise).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</div></div>
+        <div class="box"><div class="k">${tr('sunset')}</div><div class="v">${w?.sunset ? new Date(w.sunset).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</div></div>
+      </div>
+      <p class="sectionNote" style="margin-top:8px">${tr('weatherNote')}</p>
+      <p class="footerNote">${tr('source')}: ${escapeHtml(w?.source || 'Open-Meteo')}</p>
+    </div>
+  `;
+}
+
+function renderDynamicContent() {
+  if (state.activeTab === 'bands') return renderBandTab();
+  if (state.activeTab === 'classes') return renderClassesTab();
+  if (state.activeTab === 'prop') return renderPropagationTab();
+  if (state.activeTab === 'weather') return renderWeatherTab();
+  return '';
+}
+
+function updateDynamicPanels() {
+  const host = document.getElementById('dynamicPanels');
+  if (host) host.innerHTML = renderDynamicContent();
+  bindDynamicButtons();
+}
+
+function bindDynamicButtons() {
+  document.querySelectorAll('#refreshEnvBtn').forEach((btn) => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        if (state.activeTab === 'prop' && !state.myPos) {
+          await fetchSolarData(true);
+          updateDynamicPanels();
+        } else if (state.activeTab === 'weather' && !state.myPos) {
+          alert(tr('envMissing'));
+        } else {
+          await ensureEnvironmentData(true);
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  });
+}
+
+
 function render() {
   const theme = localStorage.getItem('theme') || 'dark';
   document.documentElement.classList.toggle('dark', theme === 'dark');
   app.innerHTML = `
     <style>
-      :root{--bg:#f3f6fb;--bg2:#e9eef8;--card:#fff;--card2:#f8fbff;--line:#d7deea;--text:#172033;--muted:#667085;--accent:#0b3d91;--accent2:#4f8cff}
-      html.dark{--bg:#0b1017;--bg2:#111827;--card:#151c25;--card2:#10161f;--line:#2c3644;--text:#edf3fb;--muted:#98a6b8;--accent:#5f97ff;--accent2:#87b3ff}
-      *{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;background:radial-gradient(circle at top, var(--bg2) 0%, var(--bg) 42%), var(--bg);color:var(--text);font-size:12px;line-height:1.28}
+      :root{--bg:#f3f6fb;--bg2:#e9eef8;--card:#fff;--card2:#f8fbff;--line:#d7deea;--text:#172033;--muted:#667085;--accent:#0b3d91;--accent2:#4f8cff;--ok:#2fa44f;--warn:#d8a208}
+      html.dark{--bg:#0b1017;--bg2:#111827;--card:#151c25;--card2:#10161f;--line:#2c3644;--text:#edf3fb;--muted:#98a6b8;--accent:#5f97ff;--accent2:#87b3ff;--ok:#47c96a;--warn:#f0c23a}
+      *{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;background:radial-gradient(circle at top, var(--bg2) 0%, var(--bg) 42%), var(--bg);color:var(--text);font-size:11px;line-height:1.22}
       .wrap{max-width:1200px;margin:0 auto;padding:calc(env(safe-area-inset-top, 0px) + 22px) 10px 10px 10px}.card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:18px;padding:10px;margin-bottom:10px}
-      h1{font-size:22px;margin:0 0 6px;color:var(--accent)}h2{font-size:15px;margin:0 0 8px;color:var(--accent)}p{margin:3px 0;color:var(--muted)}
-      .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}.box{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:16px;padding:8px;min-height:70px}
-      .k{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.v{font-size:14px;font-weight:bold;margin-top:4px;color:var(--text);word-break:break-word}
-      .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.tabs{display:flex;gap:8px;flex-wrap:wrap}.two{display:grid;grid-template-columns:1.1fr 1fr;gap:10px}
-      input,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:14px;font-size:13px;outline:none;background:var(--card2);color:var(--text)}
+      h1{font-size:20px;margin:0 0 5px;color:var(--accent)}h2{font-size:14px;margin:0 0 7px;color:var(--accent)}p{margin:2px 0;color:var(--muted);font-size:11px}
+      .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px}.box{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:14px;padding:6px 8px;min-height:50px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}.tripleCols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.tripleCols .stackFields{height:100%}
+      .k{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;text-align:center}.v{font-size:12px;font-weight:bold;margin-top:3px;color:var(--text);word-break:break-word;text-align:center;width:100%}
+      .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.tabs{display:flex;gap:8px;flex-wrap:wrap}.two{display:grid;grid-template-columns:minmax(0,0.82fr) minmax(0,0.82fr);gap:10px;justify-content:center}.stackFields{display:grid;grid-template-columns:1fr;gap:8px}.compactSelect{width:auto;min-width:170px;max-width:220px}.slimInput{padding:5px 10px!important;min-height:28px}.slimBtn{padding:4px 10px!important;min-height:26px;display:inline-flex!important;align-items:center!important;justify-content:center!important;text-align:center!important}.slimLabel{margin:0 0 3px 0;display:block}.titleRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}.titleRow .grow{flex:1 1 auto}.titleRow .compactSelect{margin-left:0}.centerRow{justify-content:center!important}.centerInput{text-align:center!important}.centerInput::placeholder{text-align:center!important}.centerCard{text-align:center!important}.centerCard .titleRow{justify-content:center!important}.centerCard h2,.centerCard p,.centerCard .sectionNote,.centerCard .footerNote{text-align:center!important}.centerCard .row{justify-content:center}.row button{text-align:center!important}.centerSelectWrap{display:flex;justify-content:center;margin-top:8px}.singleCenter{display:flex;justify-content:center;margin-top:8px}.singleCenter .box{width:min(320px,100%)}.subCenterLabel{text-align:center!important;display:block;width:100%}.centerFormBlock label{text-align:center!important;display:block;width:100%}.centerFormBlock .row{justify-content:center!important}.centerFormBlock input{text-align:center!important}.centerFormBlock input::placeholder{text-align:center!important}.centerGridBoxes .box{text-align:center!important;align-items:center!important}.centerGridBoxes .v,.centerGridBoxes .k{text-align:center!important}.gpsRow{justify-content:center!important}.gpsStatusSpacer{display:none}.langBtn{min-width:48px}.gpsIdle{background:linear-gradient(180deg,var(--accent2),var(--accent));color:#fff;border-color:transparent}.gpsFetching{background:linear-gradient(180deg,#ffd966,var(--warn));color:#111;border-color:transparent}.gpsFixed{background:linear-gradient(180deg,#62df89,var(--ok));color:#fff;border-color:transparent}
+      input,textarea,select{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:12px;font-size:11px;outline:none;background:var(--card2);color:var(--text)}
+      select.langsel{width:auto;min-width:120px}
       textarea{min-height:58px;resize:vertical}
-      html.dark input,html.dark textarea{background:#0f141b!important;color:#fff!important;border-color:#3a4454!important}
-      button{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:14px;padding:9px 12px;cursor:pointer;font-size:12px}.primary{background:linear-gradient(180deg,var(--accent2),var(--accent));color:#fff;border-color:transparent}
-      .badge{display:inline-block;padding:4px 8px;border-radius:999px;background:rgba(95,151,255,.14);color:var(--accent);font-size:10px;font-weight:bold}
+      html.dark input,html.dark textarea,html.dark select{background:#0f141b!important;color:#fff!important;border-color:#3a4454!important}
+      button{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:5px 10px;cursor:pointer;font-size:11px;line-height:1.1;text-align:center;display:inline-flex;align-items:center;justify-content:center}.primary{background:linear-gradient(180deg,var(--accent2),var(--accent));color:#fff;border-color:transparent}
+      .badge{display:inline-block;padding:4px 8px;border-radius:999px;background:rgba(95,151,255,.14);color:var(--accent);font-size:9px;font-weight:bold}.statusText{font-size:10px;color:var(--muted)}
       .link{color:var(--accent2);text-decoration:none}
       html.dark .box{background:linear-gradient(180deg,#151c25,#111821)!important;border-color:#313b4b!important}html.dark .v{color:#eef2f7!important}html.dark .k{color:#a9b7ca!important}html.dark button{background:#151c25!important;color:#eef2f7!important;border-color:#313b4b!important}html.dark .primary{background:linear-gradient(180deg,#6ba6ff,#4f8cff)!important;color:#fff!important;border-color:transparent!important}
-      @media (max-width:900px){.two{grid-template-columns:1fr}}
+      @media (max-width:900px){.two{grid-template-columns:1fr}.tripleCols{grid-template-columns:repeat(3,minmax(0,1fr))}}
     </style>
     <div class="wrap">
-      <div class="card">
+      <div class="card centerCard">
         <h1>Schippi's Ham&Cheese</h1>
-        <p>Mit Distanz, Richtung, Karte und Bandempfehlung.</p>
-        <div class="tabs">
-          <button id="myNameBtn">${state.myName || 'Name eingeben'}</button>
-          <button id="myCallsignBtn">${state.myCallsign || 'Rufzeichen eingeben'}</button>
-          <button id="themeBtn">🌙 / ☀️ Theme</button>
+        <p>${tr('subtitle')}</p>
+        <div class="titleRow">
+          <button class="slimBtn" id="myNameBtn">${state.myName || tr('nameEnter')}</button>
+          <button class="slimBtn" id="myCallsignBtn">${state.myCallsign || tr('callsignEnter')}</button>
+          <button class="slimBtn" id="themeBtn" title="Theme">☀️ / 🌙</button>
+          <button class="slimBtn langBtn" id="langBtn">${state.lang === 'de' ? 'DE' : 'EN'}</button>
+        </div>
+        <div class="centerSelectWrap">
+          <select id="tabSel" class="compactSelect slimInput centerInput">
+            <option value="tools" ${state.activeTab === 'tools' ? 'selected' : ''}>${tr('tabTools')}</option>
+            <option value="bands" ${state.activeTab === 'bands' ? 'selected' : ''}>${tr('tabBands')}</option>
+            <option value="classes" ${state.activeTab === 'classes' ? 'selected' : ''}>${tr('tabClasses')}</option>
+            <option value="prop" ${state.activeTab === 'prop' ? 'selected' : ''}>${tr('tabProp')}</option>
+            <option value="weather" ${state.activeTab === 'weather' ? 'selected' : ''}>${tr('tabWeather')}</option>
+          </select>
         </div>
       </div>
 
-      <div class="two">
-        <div class="card">
-          <h2>Mein Standort</h2>
-          <div class="row">
-            <button id="gpsBtn" class="primary">GPS holen</button>
-                        <button id="gpsClearBtn">GPS löschen</button>
-            <button id="copyMyBlockBtn">Block kopieren</button>
-            <button id="shareMyBlockBtn">Teilen</button>
-            <button id="copyLocBtn">Locator kopieren</button>
-            <span class="badge" id="gpsState">nicht geladen</span>
+      <div class="two" style="display:${state.activeTab === 'tools' ? 'grid' : 'none'}">
+        <div class="card centerCard">
+          <h2>${tr('myLocation')}</h2>
+          <div class="row gpsRow">
+            <button class="slimBtn ${gpsButtonClass()}" id="gpsBtn">${gpsButtonLabel()} </button>
           </div>
-          <div class="row" style="margin-top:8px">
-            <input id="addrLookup" placeholder="Adresse eingeben, um den Locator zu berechnen" style="flex:1;min-width:220px">
-            <button id="addrLookupBtn">Adresse → Locator</button>
+          <div class="row centerRow" style="margin-top:8px">
+            <button class="slimBtn" id="shareMyBlockBtn">${tr('share')}</button>
+            <button class="slimBtn" id="copyLocBtn">${tr('copyLocator')}</button>
+            <button class="slimBtn" id="gpsClearBtn">${tr('gpsClear')}</button>
+            <button class="slimBtn" id="copyMyBlockBtn">${tr('copyBlock')}</button>
           </div>
-          <div class="grid">
-            <div class="box"><div class="k">Land</div><div class="v" id="myCountry">-</div></div>
-            <div class="box"><div class="k">Stadt</div><div class="v" id="myCity">-</div></div>
-            <div class="box"><div class="k">Straße</div><div class="v" id="myStreet">-</div></div>
-            <div class="box"><div class="k">Locator</div><div class="v" id="myLocator">-</div></div>
-            <div class="box"><div class="k">Locator Zeit</div><div class="v" id="myLocalTime">-</div></div>
-            <div class="box"><div class="k">Locator Datum</div><div class="v" id="myLocalDate">-</div></div>
-            <div class="box"><div class="k"></div><div class="v" id="myGpsLocalTime">-</div></div>
-            <div class="box"><div class="k">GPS-Standort Datum</div><div class="v" id="myGpsLocalDate">-</div></div>
-            <div class="box"><div class="k">UTC Zeit</div><div class="v" id="myUtcTime">-</div></div>
-            <div class="box"><div class="k">Google Koordinaten</div><div class="v" id="gmaps">-</div></div>
-            <div class="box"><div class="k">Dezimalgrad</div><div class="v" id="fmtDec">-</div></div>
-            <div class="box"><div class="k">Grad Minuten Sekunden</div><div class="v" id="fmtDms">-</div></div>
-            <div class="box"><div class="k">Grad Dezimalminuten</div><div class="v" id="fmtDdm">-</div></div>
+          <div style="margin-top:8px">
+            <input class="slimInput centerInput" id="addrLookup" value="${escapeHtml(state.addrQuery)}" placeholder="${tr('addressPlaceholder')}" style="margin-bottom:8px">
+            <div class="row centerRow" style="margin-bottom:8px">
+              <button class="slimBtn" id="addrLookupBtn">${tr('addressToLocator')}</button>
+            </div>
+          </div>
+          <div class="tripleCols centerGridBoxes" style="margin-top:8px">
+            <div class="box"><div class="k">${tr('country')}</div><div class="v" id="myCountry">-</div></div>
+            <div class="box"><div class="k">${tr('city')}</div><div class="v" id="myCity">-</div></div>
+            <div class="box"><div class="k">${tr('street')}</div><div class="v" id="myStreet">-</div></div>
+          </div>
+          <div class="singleCenter centerGridBoxes">
+            <div class="box"><div class="k">${tr('locator')}</div><div class="v" id="myLocator">-</div></div>
+          </div>
+          <div class="tripleCols" style="margin-top:8px">
+            <div class="stackFields">
+              <div class="box"><div class="k">${tr('gpsTime')}</div><div class="v" id="myGpsLocalTime">-</div></div>
+              <div class="box"><div class="k">${tr('gpsDate')}</div><div class="v" id="myGpsLocalDate">-</div></div>
+            </div>
+            <div class="stackFields">
+              <div class="box"><div class="k">${tr('utcTime')}</div><div class="v" id="myUtcTime">-</div></div>
+              <div class="box"><div class="k">${tr('utcDate')}</div><div class="v" id="myUtcDate">-</div></div>
+            </div>
+            <div class="stackFields">
+              <div class="box"><div class="k">${tr('locatorTime')}</div><div class="v" id="myLocalTime">-</div></div>
+              <div class="box"><div class="k">${tr('locatorDate')}</div><div class="v" id="myLocalDate">-</div></div>
+            </div>
+          </div>
+          <div class="stackFields" style="margin-top:8px">
+            <div class="box"><div class="k">${tr('googleCoords')}</div><div class="v" id="gmaps">-</div></div>
+            <div class="box"><div class="k">${tr('dms')}</div><div class="v" id="fmtDms">-</div></div>
+            <div class="box"><div class="k">${tr('ddm')}</div><div class="v" id="fmtDdm">-</div></div>
           </div>
         </div>
 
-        <div class="card">
-          <h2>Gegenstation / Kürzel / Landeskenner / Locator</h2>
-          <label>Rufzeichen, Q-Code, Landeskenner oder Locator</label><input id="dxCall" placeholder="z. B. DL1ABC, QSO, HB oder JO31QH">
-          <label>Koordinatenfeld</label><textarea id="dxCoords" placeholder="Dezimalgrad, DMS oder Grad/Dezimalminuten"></textarea>
-          <div class="row">
-            <button id="bnetzaBtn">BNetzA öffnen</button>
-            <button id="routeMapBtn">Karte öffnen</button>
+        <div class="card centerCard centerFormBlock">
+          <h2>${tr('remote')}</h2>
+          <label class="slimLabel subCenterLabel">${tr('remoteInput')}</label><input class="slimInput centerInput" id="dxCall" value="${escapeHtml(state.dxCallInput)}" placeholder="${tr('remotePlaceholder')}">
+          <label class="slimLabel subCenterLabel">${tr('coordsField')}</label><input class="slimInput centerInput" id="dxCoords" value="${escapeHtml(state.dxCoordsInput)}" placeholder="${tr('coordsPlaceholder')}">
+          <div class="row centerRow">
+            ${state.lang === 'de' ? `<button class="slimBtn" id="bnetzaBtn">${tr('bnetza')}</button>` : ''}
+            <button class="slimBtn" id="routeMapBtn">${tr('openMap')}</button>
           </div>
-          <div class="grid">
-            <div class="box"><div class="k">Land / Bedeutung</div><div class="v" id="dxCountry">-</div></div>
-            <div class="box"><div class="k">Stadt</div><div class="v" id="dxCity">-</div></div>
-            <div class="box"><div class="k">Straße</div><div class="v" id="dxStreet">-</div></div>
-            <div class="box"><div class="k">CQ / ITU / Locator</div><div class="v" id="dxZones">-</div></div>
-            <div class="box"><div class="k">Hinweis</div><div class="v" id="dxNote">-</div></div>
-            <div class="box"><div class="k">Entfernung</div><div class="v" id="dxDistance">-</div></div>
-            <div class="box"><div class="k">Richtung / Azimut</div><div class="v" id="dxBearing">-</div></div>
-            <div class="box"><div class="k">Band / Frequenz Empfehlung</div><div class="v" id="dxBandRec">-</div></div>
-            <div class="box"><div class="k">Locator Zeit</div><div class="v" id="dxLocatorTime">-</div></div>
-            <div class="box"><div class="k">Karte</div><div class="v" id="dxMapLink">-</div></div>
+          <div class="grid centerGridBoxes">
+            <div class="box"><div class="k">${tr('countryMeaning')}</div><div class="v" id="dxCountry">-</div></div>
+            <div class="box"><div class="k">${tr('city')}</div><div class="v" id="dxCity">-</div></div>
+            <div class="box"><div class="k">${tr('street')}</div><div class="v" id="dxStreet">-</div></div>
+            <div class="box"><div class="k">${tr('cqitu')}</div><div class="v" id="dxZones">-</div></div>
+            <div class="box"><div class="k">${tr('note')}</div><div class="v" id="dxNote">-</div></div>
+            <div class="box"><div class="k">${tr('distance')}</div><div class="v" id="dxDistance">-</div></div>
+            <div class="box"><div class="k">${tr('bearing')}</div><div class="v" id="dxBearing">-</div></div>
+            <div class="box"><div class="k">${tr('bandRec')}</div><div class="v" id="dxBandRec">-</div></div>
+            <div class="box"><div class="k">${tr('locatorTime')}</div><div class="v" id="dxLocatorTime">-</div></div>
+          </div>
+          <div class="singleCenter centerGridBoxes">
+            <div class="box"><div class="k">${tr('map')}</div><div class="v" id="dxMapLink">-</div></div>
           </div>
         </div>
       </div>
+      <div id="dynamicPanels">${renderDynamicContent()}</div>
     </div>
   `;
+}
+
+function hydrateMyFromState() {
+  if (!state.myPos) return;
+  if (state.myGeo) fillMy(state.myGeo, state.myPos[0], state.myPos[1]);
+  else {
+    const locEl = document.getElementById('myLocator');
+    const dmsEl = document.getElementById('fmtDms');
+    const ddmEl = document.getElementById('fmtDdm');
+    const mapsEl = document.getElementById('gmaps');
+    if (locEl) locEl.textContent = maiden(state.myPos[0], state.myPos[1]);
+    if (dmsEl) dmsEl.textContent = `${fmtDMS(state.myPos[0], true)} | ${fmtDMS(state.myPos[1], false)}`;
+    if (ddmEl) ddmEl.textContent = `${fmtDDM(state.myPos[0], true)} | ${fmtDDM(state.myPos[1], false)}`;
+    if (mapsEl) mapsEl.innerHTML = `<a id="gmapsLink" class="link" target="_blank" href="${googleMapsUrl(state.myPos[0], state.myPos[1])}">${state.myPos[0].toFixed(6)}, ${state.myPos[1].toFixed(6)}</a>`;
+  }
+}
+
+function gpsButtonLabel() {
+  if (state.gpsLoading) return state.lang === 'en' ? 'Fetching GPS' : 'GPS wird geholt';
+  if (state.myPos) return state.lang === 'en' ? 'GPS fix' : 'GPS fix';
+  return tr('gpsGet');
+}
+
+function gpsButtonClass() {
+  if (state.gpsLoading) return 'gpsFetching';
+  if (state.myPos) return 'gpsFixed';
+  return 'gpsIdle';
+}
+
+function updateGpsStatusBadge() {
+  const btn = document.getElementById('gpsBtn');
+  if (btn) {
+    btn.textContent = gpsButtonLabel();
+    btn.classList.remove('gpsIdle','gpsFetching','gpsFixed','primary');
+    btn.classList.add(gpsButtonClass());
+  }
+}
+
+function hydrateUiFromState() {
+  hydrateMyFromState();
+  updateClock();
+  updateGpsStatusBadge();
+  const dxCallEl = document.getElementById('dxCall');
+  if (dxCallEl) dxCallEl.value = state.dxCallInput || '';
+  const dxCoordsEl = document.getElementById('dxCoords');
+  if (dxCoordsEl) dxCoordsEl.value = state.dxCoordsInput || '';
+  const addrEl = document.getElementById('addrLookup');
+  if (addrEl) addrEl.value = state.addrQuery || '';
 }
 
 function updateClock() {
@@ -1012,6 +2077,7 @@ function updateClock() {
   const myGpsLocalTime = document.getElementById('myGpsLocalTime');
   const myGpsLocalDate = document.getElementById('myGpsLocalDate');
   const myUtcTime = document.getElementById('myUtcTime');
+  const myUtcDate = document.getElementById('myUtcDate');
   const dxLocatorTime = document.getElementById('dxLocatorTime');
 
   if (myLocalTime) myLocalTime.textContent = locatorTz ? fmtTimeForTimezone(locatorTz) : '-';
@@ -1019,49 +2085,52 @@ function updateClock() {
   if (myGpsLocalTime) myGpsLocalTime.textContent = gpsTz ? fmtTimeForTimezone(gpsTz) : '-';
   if (myGpsLocalDate) myGpsLocalDate.textContent = gpsTz ? fmtDateForTimezone(gpsTz) : '-';
   if (myUtcTime) myUtcTime.textContent = fmtUtcTime();
+  if (myUtcDate) myUtcDate.textContent = fmtDateForTimezone('UTC');
   if (dxLocatorTime) dxLocatorTime.textContent = dxTz ? fmtTimeForTimezone(dxTz) : '-';
 }
 
 function clearMyGps() {
   state.myPos = null;
+  state.myGeo = null;
   state.gpsActualTimeZone = null;
+  state.gpsLoading = false;
   document.getElementById('myCountry').textContent = '-';
   document.getElementById('myCity').textContent = '-';
   document.getElementById('myStreet').textContent = '-';
   document.getElementById('myLocator').textContent = '-';
-  document.getElementById('fmtDec').textContent = '-';
   document.getElementById('fmtDms').textContent = '-';
   document.getElementById('fmtDdm').textContent = '-';
   document.getElementById('gmaps').textContent = '-';
-  document.getElementById('gpsState').textContent = 'gelöscht';
   updateClock();
+  updateGpsStatusBadge();
+  persistCoreState();
 }
 
 function fillMy(geo, lat, lon) {
+  state.myGeo = geo;
   document.getElementById('myCountry').textContent = geo.country;
   document.getElementById('myCity').textContent = geo.city;
   document.getElementById('myStreet').textContent = geo.street;
   document.getElementById('myLocator').textContent = maiden(lat, lon);
-  document.getElementById('fmtDec').textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
   document.getElementById('fmtDms').textContent = `${fmtDMS(lat, true)} | ${fmtDMS(lon, false)}`;
   document.getElementById('fmtDDm');
   document.getElementById('fmtDdm').textContent = `${fmtDDM(lat, true)} | ${fmtDDM(lon, false)}`;
-  document.getElementById('gpsState').textContent = 'geladen';
   document.getElementById('gmaps').innerHTML = `<a id="gmapsLink" class="link" target="_blank" href="${googleMapsUrl(lat, lon)}">${lat.toFixed(6)}, ${lon.toFixed(6)}</a>`;
   updateClock();
+  updateGpsStatusBadge();
+  persistCoreState();
 }
 
 async function getPosition() {
-  const stateEl = document.getElementById('gpsState');
-  stateEl.textContent = 'warte...';
+  state.gpsLoading = true;
+  updateGpsStatusBadge();
   try {
     let latitude, longitude;
     if (Capacitor.isNativePlatform()) {
       const perm = await Geolocation.requestPermissions();
       const granted = perm.location === 'granted' || perm.coarseLocation === 'granted';
       if (!granted) {
-        stateEl.textContent = 'verweigert';
-        alert('Standortberechtigung wurde nicht erteilt.');
+        alert(tr('gpsDenied'));
         return;
       }
       const pos = await Geolocation.getCurrentPosition({
@@ -1086,23 +2155,24 @@ async function getPosition() {
     state.gpsActualTimeZone = deviceTimeZone();
     const geo = await reverseGeocode(latitude, longitude);
     fillMy(geo, latitude, longitude);
+    await ensureEnvironmentData(true);
+    persistCoreState();
     evaluateDx();
   } catch (err) {
-    stateEl.textContent = 'fehler';
-    alert('GPS-Fehler: ' + (err?.message || String(err)));
+    alert(tr('gpsErrorPrefix') + (err?.message || String(err)));
+  } finally {
+    state.gpsLoading = false;
+    updateGpsStatusBadge();
   }
 }
 
 async function getGpsTimeOnly() {
-  const stateEl = document.getElementById('gpsState');
-  stateEl.textContent = 'GPS-Zeit...';
   try {
     if (Capacitor.isNativePlatform()) {
       const perm = await Geolocation.requestPermissions();
       const granted = perm.location === 'granted' || perm.coarseLocation === 'granted';
       if (!granted) {
-        stateEl.textContent = 'verweigert';
-        alert('Standortberechtigung wurde nicht erteilt.');
+        alert(tr('gpsDenied'));
         return;
       }
       await Geolocation.getCurrentPosition({
@@ -1121,32 +2191,29 @@ async function getGpsTimeOnly() {
     }
     state.gpsActualTimeZone = deviceTimeZone();
     updateClock();
-    stateEl.textContent = 'GPS-Zeit geladen';
   } catch (err) {
-    stateEl.textContent = 'fehler';
     alert('GPS-Zeit-Fehler: ' + (err?.message || String(err)));
   }
 }
 
 async function lookupAddressToLocator() {
   const query = (document.getElementById('addrLookup')?.value || '').trim();
+  state.addrQuery = query;
   if (!query) {
-    alert('Bitte zuerst eine Adresse eingeben.');
+    alert(tr('enterAddressFirst'));
     return;
   }
-  const stateEl = document.getElementById('gpsState');
-  const oldState = stateEl.textContent;
-  stateEl.textContent = 'suche...';
   try {
     const hit = await geocodeAddress(query);
     state.myPos = [hit.lat, hit.lon];
+    state.gpsActualTimeZone = deviceTimeZone();
     const geo = await reverseGeocode(hit.lat, hit.lon);
     fillMy(geo, hit.lat, hit.lon);
-    stateEl.textContent = 'Adresse geladen';
+    await ensureEnvironmentData(true);
+    persistCoreState();
     evaluateDx();
   } catch (err) {
-    stateEl.textContent = oldState || 'fehler';
-    alert('Adresssuche: ' + (err?.message || String(err)));
+    alert(tr('addressErrorPrefix') + (err?.message || String(err)));
   }
 }
 
@@ -1158,12 +2225,12 @@ function setDxGeoExtras(lat, lon) {
     document.getElementById('dxDistance').textContent = `${distance.toFixed(1)} km`;
     document.getElementById('dxBearing').textContent = `${bearing.toFixed(0)}° ${bearingText(bearing)}`;
     document.getElementById('dxBandRec').textContent = `${rec.band} · ${rec.reason}`;
-    document.getElementById('dxMapLink').innerHTML = `<a class="link" target="_blank" href="${routeMapUrl(state.myPos[0], state.myPos[1], lat, lon)}">Route / Karte öffnen</a>`;
+    document.getElementById('dxMapLink').innerHTML = `<a class="link" target="_blank" href="${routeMapUrl(state.myPos[0], state.myPos[1], lat, lon)}">${tr('routeMap')}</a>`;
   } else {
     document.getElementById('dxDistance').textContent = '-';
     document.getElementById('dxBearing').textContent = '-';
-    document.getElementById('dxBandRec').textContent = 'erst GPS/Adresse setzen';
-    document.getElementById('dxMapLink').textContent = 'erst GPS/Adresse setzen';
+    document.getElementById('dxBandRec').textContent = tr('setGpsFirst');
+    document.getElementById('dxMapLink').textContent = tr('setGpsFirst');
   }
 }
 
@@ -1183,7 +2250,6 @@ async function evaluateDx() {
   dxStreet.textContent = '-';
   dxZones.textContent = '-';
   dxNote.textContent = '-';
-
   document.getElementById('dxDistance').textContent = '-';
   document.getElementById('dxBearing').textContent = '-';
   document.getElementById('dxBandRec').textContent = '-';
@@ -1191,19 +2257,14 @@ async function evaluateDx() {
 
   const upper = raw.toUpperCase();
 
-  // 1. Q-Codes immer zuerst
   if (upper && typeof qcodes === 'object' && Object.prototype.hasOwnProperty.call(qcodes, upper)) {
-    dxCountry.textContent = qcodes[upper];
-    dxCity.textContent = '-';
-    dxStreet.textContent = '-';
-    dxZones.textContent = 'Q-Code';
-    dxNote.textContent = 'Q-Code erkannt';
-    state.dxPos = null;
+    dxCountry.textContent = qcodeText(upper, qcodes[upper]);
+    dxZones.textContent = tr('qCode');
+    dxNote.textContent = tr('qCodeDetected');
     updateClock();
     return;
   }
 
-  // 2. Locator
   if (upper) {
     const locator = maidenToLatLon(upper);
     if (locator) {
@@ -1213,17 +2274,15 @@ async function evaluateDx() {
         dxCity.textContent = geo.city;
         dxStreet.textContent = geo.street;
       } catch {}
-
       state.dxPos = [locator[0], locator[1]];
       dxZones.textContent = upper;
-      dxNote.textContent = 'Locator erkannt';
+      dxNote.textContent = tr('locatorDetected');
       setDxGeoExtras(locator[0], locator[1]);
       updateClock();
       return;
     }
   }
 
-  // 3. Rufzeichen / Präfix
   if (upper && Array.isArray(prefixes)) {
     const hit = prefixes.find((e) => {
       if (typeof e === 'string') return upper.startsWith(e.toUpperCase());
@@ -1232,39 +2291,36 @@ async function evaluateDx() {
       if (e?.p && typeof e.p === 'string') return upper.startsWith(e.p.toUpperCase());
       return false;
     });
-
     if (hit) {
       dxCountry.textContent = hit.country || hit.name || '-';
       const cq = hit.cq ? `CQ ${hit.cq}` : '';
       const itu = hit.itu ? `ITU ${hit.itu}` : '';
       dxZones.textContent = [cq, itu].filter(Boolean).join(' / ') || '-';
-      dxNote.textContent = 'Rufzeichen erkannt';
+      dxNote.textContent = tr('callsignDetected');
       updateClock();
       return;
     }
   }
 
-  // 4. Koordinatenfeld
   if (coords) {
     try {
       const parsed = parseCoords(coords);
       if (!parsed) {
-        dxNote.textContent = 'Koordinatenformat nicht erkannt';
+        dxNote.textContent = tr('coordsUnknown');
         updateClock();
         return;
       }
-
       const geo = await reverseGeocode(parsed[0], parsed[1]);
       dxCountry.textContent = geo.country;
       dxCity.textContent = geo.city;
       dxStreet.textContent = geo.street;
-      dxNote.textContent = 'Koordinaten erkannt';
+      dxNote.textContent = tr('coordsDetected');
       state.dxPos = [parsed[0], parsed[1]];
       setDxGeoExtras(parsed[0], parsed[1]);
       updateClock();
       return;
     } catch {
-      dxNote.textContent = 'Reverse-Geocoding fehlgeschlagen';
+      dxNote.textContent = tr('reverseFailed');
       updateClock();
       return;
     }
@@ -1280,7 +2336,7 @@ async function shareMyBlock() {
       await Share.share({
         title: "Schippi's Ham&Cheese",
         text,
-        dialogTitle: 'Daten teilen'
+        dialogTitle: tr('shareDialog')
       });
       return;
     }
@@ -1289,7 +2345,7 @@ async function shareMyBlock() {
       return;
     }
     await navigator.clipboard.writeText(text);
-    alert('Teilen nicht direkt verfügbar. Block wurde in die Zwischenablage kopiert.');
+    alert(tr('shareFallback'));
   } catch (err) {
     console.error(err);
   }
@@ -1298,6 +2354,35 @@ async function shareMyBlock() {
 function bind() {
   document.getElementById('myNameBtn').onclick = editMyName;
   document.getElementById('myCallsignBtn').onclick = editMyCallsign;
+  hydrateUiFromState();
+  const tabSel = document.getElementById('tabSel');
+  if (tabSel) {
+    tabSel.onchange = async (e) => {
+      state.activeTab = e.target.value;
+      localStorage.setItem('activeTab', state.activeTab);
+      persistCoreState();
+      render();
+      bind();
+      startClock();
+      hydrateUiFromState();
+      if (state.activeTab === 'prop') await fetchSolarData(true);
+      if (state.myPos && state.activeTab !== 'tools') await ensureEnvironmentData(false);
+      updateDynamicPanels();
+      evaluateDx();
+    };
+  }
+  const langBtn = document.getElementById('langBtn');
+  if (langBtn) langBtn.onclick = () => {
+    state.lang = state.lang === 'de' ? 'en' : 'de';
+    localStorage.setItem('lang', state.lang);
+    render();
+    bind();
+    startClock();
+    hydrateUiFromState();
+    evaluateDx();
+    updateDynamicPanels();
+  };
+
   document.getElementById('themeBtn').onclick = () => {
     localStorage.setItem('theme', (localStorage.getItem('theme') || 'dark') === 'dark' ? 'light' : 'dark');
     render();
@@ -1313,16 +2398,23 @@ function bind() {
 
   document.getElementById('dxCall').addEventListener('input', (e) => {
     e.target.value = e.target.value.toUpperCase();
+    state.dxCallInput = e.target.value;
+    persistCoreState();
     evaluateDx();
   });
-
-  document.getElementById('dxCoords').addEventListener('input', () => {
+  document.getElementById('dxCoords').addEventListener('input', (e) => {
+    state.dxCoordsInput = e.target.value;
+    persistCoreState();
     evaluateDx();
+  });
+  document.getElementById('addrLookup').addEventListener('input', (e) => {
+    state.addrQuery = e.target.value;
   });
 
   document.getElementById('gpsBtn').onclick = getPosition;
   document.getElementById('gpsClearBtn').onclick = () => { clearMyGps(); evaluateDx(); };
   document.getElementById('addrLookupBtn').onclick = lookupAddressToLocator;
+  document.getElementById('addrLookup').addEventListener('input', (e) => { state.addrQuery = e.target.value; persistCoreState(); });
   document.getElementById('addrLookup').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') lookupAddressToLocator();
   });
@@ -1335,13 +2427,20 @@ function bind() {
     const t = document.getElementById('myLocator').textContent || '';
     try { await navigator.clipboard.writeText(t); } catch {}
   };
-  document.getElementById('bnetzaBtn').onclick = () => {
-    window.open('https://ans.bundesnetzagentur.de/Amateurfunk/Rufzeichen.aspx', '_blank');
-  };
+
+  const bnetzaBtn = document.getElementById('bnetzaBtn');
+  if (bnetzaBtn) {
+    bnetzaBtn.onclick = () => {
+      window.open('https://ans.bundesnetzagentur.de/Amateurfunk/Rufzeichen.aspx', '_blank');
+    };
+  }
+
   document.getElementById('routeMapBtn').onclick = () => {
     const link = document.querySelector('#dxMapLink a');
     if (link) window.open(link.href, '_blank');
   };
+
+  bindDynamicButtons();
 }
 
 function startClock() {
@@ -1353,3 +2452,6 @@ function startClock() {
 render();
 bind();
 startClock();
+hydrateUiFromState();
+if (state.myPos) ensureEnvironmentData(false);
+else if (state.activeTab === 'prop') fetchSolarData(true).then(updateDynamicPanels).catch(() => {});
