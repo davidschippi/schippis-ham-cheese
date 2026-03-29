@@ -56,6 +56,26 @@ npx cap open android
 
 # 📜 Changelog
 
+## v2.0.0
+
+✨ Added
+- Added graphical GNSS satellite signal bars
+- Added per-satellite signal visualization with live GNSS data
+- Added flag/system display for GPS, GLONASS, Galileo and BeiDou satellites
+- Added compact satellite system summary inside the GPS / GNSS information area
+
+🛠 Improved
+- Redesigned the GNSS satellite section to better match the new dashboard-style layout
+- Improved visual structure of satellite rows
+- Reduced spacing between satellite status rows for a denser and cleaner display
+- Moved the Satellite Systems overview into the main GPS / GNSS information block
+- Changed the satellite system cards so all four systems fit into a single row
+
+✅ Fixed
+- Fixed layout spacing in the GNSS signal bar section
+- Fixed the placement of the satellite system summary block
+- Improved consistency between GNSS overview data and live satellite list presentation
+
 ## v1.7.2
 - Added more tolerant address search
 - Added multiple address suggestions
