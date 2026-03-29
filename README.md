@@ -56,7 +56,25 @@ npx cap open android
 
 # 📜 Changelog
 
-## v1.4.0
+## v1.7.2
+- Added more tolerant address search
+- Added multiple address suggestions
+- Added live address suggestions while typing
+- Added improved DE Classes overview with included frequency ranges
+
+🛠 Improved
+- Refined alignment and centering across several sections
+- Improved readability and structure of the DE Classes tab
+- Improved formatting of long texts and frequency information
+- Further polished overall mobile layout and visual consistency
+
+✅ Fixed
+- Fixed remaining layout and centering issues
+- Fixed formatting problems in the DE Classes section
+- Improved address search behavior and result selection
+
+
+## v1.7.0
 - new tab navigation via dropdown menu
 - new Band Recommendation section
 - new German License Classes section
