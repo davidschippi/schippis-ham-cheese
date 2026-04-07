@@ -56,6 +56,33 @@ npx cap open android
 
 # 📜 Changelog
 
+## v2.3.0
+
+This update improves the GPS workflow, address handling, and overall usability in the Tools section.
+
+✨ New
+- Added a live GPS progress bar below the GPS button
+- Progress now reflects the path from GPS search to full fix with resolved address
+- Added better handling for full street information, including house number
+- Added address search support for the counterstation section
+- Added a reset button for the counterstation area
+- Added tap-to-copy support for coordinate fields
+- Locator
+- Degrees / Minutes / Seconds
+- Decimal Minutes
+
+🛠 Improved
+- Improved reverse geocoding reliability after GPS fix
+- Improved address lookup workflow in both top and bottom sections
+- Improved editing behavior for Name and Callsign by showing existing values
+- Improved Google Maps opening behavior when no address is entered
+
+✅ Fixed
+- Fixed GPS flow so location data is preserved even if reverse geocoding is delayed
+- Fixed address reset behavior
+- Fixed missing house number in resolved address data
+- Fixed counterstation workflow for direct address-based distance lookup
+
 ## v2.0.0
 
 ✨ Added
