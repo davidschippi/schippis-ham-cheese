@@ -40,12 +40,6 @@ const state = {
   lastEnvFetch: 0,
   clockTimer: null,
   gpsLoading: false,
-  gpsProgress: 0,
-  gpsProgressLabel: '',
-  gpsBestAccuracy: null,
-  gpsStartedAt: 0,
-  gpsReverseDone: false,
-  gpsProgressTimer: null,
   addrSuggestions: [],
   addrSuggestTimer: null,
   addrSuggestOpen: false,
@@ -991,92 +985,6 @@ function normalizeAddressQuery(query) {
     .replace(/\s+/g, ' ')
     .replace(/\s*,\s*/g, ', ')
     .trim();
-}
-
-
-function composeStreet(address = {}, name = '', displayName = '') {
-  const a = address || {};
-  const road = a.road || a.pedestrian || a.footway || a.cycleway || a.path || a.residential || a.neighbourhood || a.suburb || '';
-  const house = a.house_number || a.housenumber || a.street_number || '';
-  const unit = a.unit || '';
-  let street = [road, house, unit].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-  if (street) return street;
-
-  const fromName = String(name || '').trim();
-  if (fromName) return fromName;
-
-  const disp = String(displayName || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (disp.length) {
-    const first = disp[0];
-    const second = disp[1] || '';
-    const streetLike = /\d/.test(first) || /(straße|strasse|street|road|avenue|ave|allee|platz|weg|gasse|lane|drive|blvd|boulevard|calle|rua|via|viale|rue|chemin|impasse)/i.test(first);
-    if (streetLike) return first;
-    if (second && /\d/.test(second)) return second;
-    if (second && /(straße|strasse|street|road|avenue|ave|allee|platz|weg|gasse|lane|drive|blvd|boulevard|calle|rua|via|viale|rue|chemin|impasse)/i.test(second)) return second;
-  }
-
-  return '-';
-}
-
-function gpsHasResolvedAddress() {
-  const g = state.myGeo || {};
-  return [g.country, g.city, g.street].some(v => String(v || '').trim() && String(v).trim() !== '-');
-}
-
-function computeGpsProgress() {
-  if (!state.gpsLoading) return state.myPos ? 100 : 0;
-  const elapsed = state.gpsStartedAt ? (Date.now() - state.gpsStartedAt) / 1000 : 0;
-  const visible = parseInt(state.gnss?.satellitesVisible, 10);
-  const used = parseInt(state.gnss?.satellitesUsed, 10);
-  const acc = state.gpsBestAccuracy ?? (typeof state.gnss?.accuracy === 'string' ? parseFloat(state.gnss.accuracy) : null);
-
-  let score = 8;
-  score += Math.min(30, elapsed * 2.2);
-  if (Number.isFinite(visible)) score += Math.min(16, visible * 0.7);
-  if (Number.isFinite(used)) score += Math.min(26, used * 2.2);
-  if (Number.isFinite(acc)) {
-    if (acc <= 6) score += 28;
-    else if (acc <= 10) score += 22;
-    else if (acc <= 20) score += 16;
-    else if (acc <= 35) score += 10;
-    else score += 4;
-  }
-  if (state.gpsReverseDone || gpsHasResolvedAddress()) score += 18;
-  if (!state.gpsReverseDone && !gpsHasResolvedAddress()) score = Math.min(score, 94);
-  return Math.max(4, Math.min(100, Math.round(score)));
-}
-
-function gpsProgressColor(val) {
-  if (val < 25) return '#cf4c46';
-  if (val < 50) return '#d97b28';
-  if (val < 75) return '#d8b132';
-  return '#47c96a';
-}
-
-function updateGpsProgressUi() {
-  const wrap = document.getElementById('gpsProgressWrap');
-  const bar = document.getElementById('gpsProgressBar');
-  if (!wrap || !bar) return;
-  const progress = computeGpsProgress();
-  if (!state.gpsLoading && !state.myPos) {
-    wrap.style.display = 'none';
-    bar.style.width = '0%';
-    return;
-  }
-  wrap.style.display = 'block';
-  bar.style.width = `${progress}%`;
-  bar.style.background = gpsProgressColor(progress);
-  bar.setAttribute('aria-valuenow', String(progress));
-}
-
-function startGpsProgressTimer() {
-  stopGpsProgressTimer();
-  state.gpsProgressTimer = setInterval(updateGpsProgressUi, 350);
-}
-
-function stopGpsProgressTimer() {
-  if (state.gpsProgressTimer) clearInterval(state.gpsProgressTimer);
-  state.gpsProgressTimer = null;
 }
 
 
@@ -2487,12 +2395,7 @@ function handleGnssLocationLike(payload) {
   state.gnss.bearing = bearing;
   state.gnss.lastFix = ts && !isNaN(ts) ? ts.toLocaleString(state.lang === 'de' ? 'de-DE' : 'en-GB') : '-';
   state.gnss.available = true;
-  if (payload.accuracy != null && Number.isFinite(Number(payload.accuracy))) {
-    const a = Number(payload.accuracy);
-    state.gpsBestAccuracy = state.gpsBestAccuracy == null ? a : Math.min(state.gpsBestAccuracy, a);
-  }
   updateGnssUi();
-  updateGpsProgressUi();
 }
 
 function handleNativeGnssStatus(payload) {
@@ -2519,7 +2422,6 @@ function handleNativeGnssStatus(payload) {
   state.gnss.available = state.gnss.available || systems.length > 0 || Number.isFinite(visible);
   state.gnss.note = tr('gpsInfoNote');
   updateGnssUi();
-  updateGpsProgressUi();
 }
 
 function handleNativeGnssLocation(payload) {
@@ -2658,7 +2560,7 @@ function render() {
       h1{font-size:20px;margin:0 0 5px;color:var(--accent)}h2{font-size:14px;margin:0 0 7px;color:var(--accent)}p{margin:2px 0;color:var(--muted);font-size:11px}
       .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px}.box{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:14px;padding:6px 8px;min-height:50px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}.tripleCols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.tripleCols .stackFields{height:100%}
       .k{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;text-align:center}.v{font-size:12px;font-weight:bold;margin-top:3px;color:var(--text);word-break:break-word;text-align:center;width:100%;white-space:pre-line}
-      .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.tabs{display:flex;gap:8px;flex-wrap:wrap}.two{display:grid;grid-template-columns:minmax(0,0.82fr) minmax(0,0.82fr);gap:10px;justify-content:center}.stackFields{display:grid;grid-template-columns:1fr;gap:8px}.compactSelect{width:auto;min-width:170px;max-width:220px}.slimInput{padding:5px 10px!important;min-height:28px}.slimBtn{padding:4px 10px!important;min-height:26px;display:inline-flex!important;align-items:center!important;justify-content:center!important;text-align:center!important}.slimLabel{margin:0 0 3px 0;display:block}.titleRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}.titleRow .grow{flex:1 1 auto}.titleRow .compactSelect{margin-left:0}.centerRow{justify-content:center!important}.centerInput{text-align:center!important}.centerInput::placeholder{text-align:center!important}.centerCard{text-align:center!important}.centerCard .titleRow{justify-content:center!important}.centerCard h2,.centerCard p,.centerCard .sectionNote,.centerCard .footerNote{text-align:center!important}.centerCard .row{justify-content:center}.row button{text-align:center!important}.centerSelectWrap{display:flex;justify-content:center;margin-top:8px}.singleCenter{display:flex;justify-content:center;margin-top:8px}.singleCenter .box{width:min(320px,100%)}.subCenterLabel{text-align:center!important;display:block;width:100%}.centerFormBlock label{text-align:center!important;display:block;width:100%}.centerFormBlock .row{justify-content:center!important}.centerFormBlock input{text-align:center!important}.centerFormBlock input::placeholder{text-align:center!important}.centerGridBoxes .box{text-align:center!important;align-items:center!important}.centerGridBoxes .v,.centerGridBoxes .k{text-align:center!important}.gpsRow{justify-content:center!important}.gpsStatusSpacer{display:none}.langBtn{min-width:48px}.gpsIdle{background:linear-gradient(180deg,var(--accent2),var(--accent));color:#fff;border-color:transparent}.gpsFetching{background:linear-gradient(180deg,#ffd966,var(--warn));color:#111;border-color:transparent}.gpsFixed{background:linear-gradient(180deg,#62df89,var(--ok));color:#fff;border-color:transparent}.gpsProgressWrap{display:none;width:min(260px,92%);margin:6px auto 0 auto;height:8px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.06);overflow:hidden}.gpsProgressBar{height:100%;width:0%;border-radius:999px;transition:width .3s ease,background .3s ease;background:#cf4c46}.deClassesIntro{margin-bottom:10px}.classCardWide{padding:14px 14px 16px}.classHeadline{margin:10px 0 10px 0;line-height:1.2}.classSection{margin-top:8px}.classSectionLabel{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;text-align:center}.pillWrap{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}.pill{display:inline-flex;align-items:center;justify-content:center;text-align:center;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:linear-gradient(180deg,var(--card),var(--card2));color:var(--text);line-height:1.2;max-width:100%}.pillBand{font-weight:700}.pillFreq{font-size:13px}.classBottomGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.classInfoBox{min-height:76px;padding:10px 12px}.classInfoBox .v{line-height:1.3}.classesStack{gap:12px}.miniInlineLabel{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.satSummaryLine{margin-bottom:8px}.satLegend{display:grid;grid-template-columns:56px 92px 10px auto 10px auto;gap:8px;align-items:center;justify-content:start;margin:6px 0 10px 0;text-align:left}.satLegendLeft,.satLegendMid{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.satLegendDot{width:10px;height:10px;border-radius:999px;display:inline-block}.fixDot{background:#77d78f}.viewDot{background:#6d778f}.satList{display:flex;flex-direction:column;gap:3px;margin-top:6px}.satListLarge{gap:2px}.satRow{display:grid;grid-template-columns:104px minmax(0,1fr) 74px;gap:12px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,var(--card),var(--card2))}.satMeta{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:3px;min-width:0}.satPrn{font-size:16px;font-weight:700;color:var(--text);line-height:1.1}.satSnr{font-size:13px;color:var(--muted);line-height:1.1}.satBarWrap{display:grid;grid-template-columns:repeat(20,minmax(0,1fr));gap:3px;align-items:end}.satSegment{display:block;height:18px;border-radius:4px;border:1px solid var(--line);background:transparent}.satBarLow{background:#ea7a42;border-color:transparent}.satBarMid{background:#e6d63d;border-color:transparent}.satBarGood{background:#71cf3b;border-color:transparent}.satBarStrong{background:#24bf2d;border-color:transparent}.satBarEmpty{background:transparent}.satRight{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right}.satDb{font-size:14px;font-weight:700;color:var(--text);line-height:1}.satUse{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);text-align:right;line-height:1}.satUsed .satUse{color:#77d78f}
+      .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.tabs{display:flex;gap:8px;flex-wrap:wrap}.two{display:grid;grid-template-columns:minmax(0,0.82fr) minmax(0,0.82fr);gap:10px;justify-content:center}.stackFields{display:grid;grid-template-columns:1fr;gap:8px}.compactSelect{width:auto;min-width:170px;max-width:220px}.slimInput{padding:5px 10px!important;min-height:28px}.slimBtn{padding:4px 10px!important;min-height:26px;display:inline-flex!important;align-items:center!important;justify-content:center!important;text-align:center!important}.slimLabel{margin:0 0 3px 0;display:block}.titleRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}.titleRow .grow{flex:1 1 auto}.titleRow .compactSelect{margin-left:0}.centerRow{justify-content:center!important}.centerInput{text-align:center!important}.centerInput::placeholder{text-align:center!important}.centerCard{text-align:center!important}.centerCard .titleRow{justify-content:center!important}.centerCard h2,.centerCard p,.centerCard .sectionNote,.centerCard .footerNote{text-align:center!important}.centerCard .row{justify-content:center}.row button{text-align:center!important}.centerSelectWrap{display:flex;justify-content:center;margin-top:8px}.singleCenter{display:flex;justify-content:center;margin-top:8px}.singleCenter .box{width:min(320px,100%)}.subCenterLabel{text-align:center!important;display:block;width:100%}.centerFormBlock label{text-align:center!important;display:block;width:100%}.centerFormBlock .row{justify-content:center!important}.centerFormBlock input{text-align:center!important}.centerFormBlock input::placeholder{text-align:center!important}.centerGridBoxes .box{text-align:center!important;align-items:center!important}.centerGridBoxes .v,.centerGridBoxes .k{text-align:center!important}.gpsRow{justify-content:center!important}.gpsStatusSpacer{display:none}.langBtn{min-width:48px}.gpsIdle{background:linear-gradient(180deg,var(--accent2),var(--accent));color:#fff;border-color:transparent}.gpsFetching{background:linear-gradient(180deg,#ffd966,var(--warn));color:#111;border-color:transparent}.gpsFixed{background:linear-gradient(180deg,#62df89,var(--ok));color:#fff;border-color:transparent}.deClassesIntro{margin-bottom:10px}.classCardWide{padding:14px 14px 16px}.classHeadline{margin:10px 0 10px 0;line-height:1.2}.classSection{margin-top:8px}.classSectionLabel{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;text-align:center}.pillWrap{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}.pill{display:inline-flex;align-items:center;justify-content:center;text-align:center;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:linear-gradient(180deg,var(--card),var(--card2));color:var(--text);line-height:1.2;max-width:100%}.pillBand{font-weight:700}.pillFreq{font-size:13px}.classBottomGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.classInfoBox{min-height:76px;padding:10px 12px}.classInfoBox .v{line-height:1.3}.classesStack{gap:12px}.miniInlineLabel{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.satSummaryLine{margin-bottom:8px}.satLegend{display:grid;grid-template-columns:56px 92px 10px auto 10px auto;gap:8px;align-items:center;justify-content:start;margin:6px 0 10px 0;text-align:left}.satLegendLeft,.satLegendMid{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.satLegendDot{width:10px;height:10px;border-radius:999px;display:inline-block}.fixDot{background:#77d78f}.viewDot{background:#6d778f}.satList{display:flex;flex-direction:column;gap:3px;margin-top:6px}.satListLarge{gap:2px}.satRow{display:grid;grid-template-columns:104px minmax(0,1fr) 74px;gap:12px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,var(--card),var(--card2))}.satMeta{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:3px;min-width:0}.satPrn{font-size:16px;font-weight:700;color:var(--text);line-height:1.1}.satSnr{font-size:13px;color:var(--muted);line-height:1.1}.satBarWrap{display:grid;grid-template-columns:repeat(20,minmax(0,1fr));gap:3px;align-items:end}.satSegment{display:block;height:18px;border-radius:4px;border:1px solid var(--line);background:transparent}.satBarLow{background:#ea7a42;border-color:transparent}.satBarMid{background:#e6d63d;border-color:transparent}.satBarGood{background:#71cf3b;border-color:transparent}.satBarStrong{background:#24bf2d;border-color:transparent}.satBarEmpty{background:transparent}.satRight{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right}.satDb{font-size:14px;font-weight:700;color:var(--text);line-height:1}.satUse{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);text-align:right;line-height:1}.satUsed .satUse{color:#77d78f}
 .satSummaryLineBig{font-size:15px;text-align:left!important;margin-bottom:6px}.satSummaryLineBig #gnssInViewUsed{font-size:15px;font-weight:800}.satLegendMock{grid-template-columns:52px 86px 10px auto 10px auto 28px 28px;gap:6px;align-items:center}.satLegendRight{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;text-align:right}.satRow{grid-template-columns:72px 60px minmax(0,1fr) 66px 46px;gap:8px;align-items:center;padding:3px 6px;border-radius:6px}.satMetaMock{gap:1px}.satPrnRow{display:flex;align-items:center;gap:6px}.satFlag{font-size:20px;line-height:1}.satPrnId{font-size:15px;font-weight:800;color:var(--text)}.satSystemAbbr{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-left:26px}.satDbLeft{font-size:16px;font-weight:700;color:var(--text);text-align:left;white-space:nowrap}.satBarWrapMock{gap:1px}.satSegment{height:14px;border-radius:3px}.satRightMock{align-items:flex-end;gap:1px}.satAngles{display:flex;flex-direction:column;align-items:flex-end;gap:1px;font-size:11px;color:var(--muted);line-height:1}.satSystemLegend{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-start;margin-top:6px;padding-top:5px;border-top:1px solid var(--line)}.innerSubCard{margin-top:12px;padding-top:4px;border-top:1px solid var(--line)}.subSectionTitle{font-size:17px;margin:0 0 10px;text-align:center;color:var(--accent)}.satLegendChip{display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--text)}.satLegendFlag{font-size:18px;line-height:1}.satLegendText{white-space:nowrap}.gnssSystemsRow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;align-items:stretch}.gnssSystemsRow .gnssSystemBox{min-height:44px;padding:6px 6px;border-radius:12px}.gnssSystemsRow .k{font-size:10px;letter-spacing:.1em}.gnssSystemsRow .v{font-size:14px;font-weight:800}.gnssSystemsRow p{grid-column:1/-1}.footerNote{margin-top:8px}.footerNote#gnssNote{margin-top:10px}.addrInputWrap{position:relative}.addrInputWrap .slimInput{padding-right:42px;margin-bottom:0}.suggestToggleBtn{position:absolute;right:8px;top:50%;transform:translateY(-50%);height:28px;min-width:28px;padding:0 8px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center}.suggestListWrap{display:none;position:relative;z-index:2}.suggestListWrap .suggestItem{display:block;width:100%;text-align:left;margin:0 0 6px;padding:10px 14px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.suggestListWrap .suggestItem:last-child{margin-bottom:0}.suggestListWrap .suggestItem:hover{background:rgba(255,255,255,.04)}
 
       input,textarea,select{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:12px;font-size:11px;outline:none;background:var(--card2);color:var(--text)}
@@ -2698,9 +2600,6 @@ function render() {
           <h2>${tr('myLocation')}</h2>
           <div class="row gpsRow">
             <button class="slimBtn ${gpsButtonClass()}" id="gpsBtn">${gpsButtonLabel()} </button>
-          </div>
-          <div id="gpsProgressWrap" class="gpsProgressWrap" aria-hidden="false">
-            <div id="gpsProgressBar" class="gpsProgressBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
           </div>
           <div class="row centerRow" style="margin-top:8px">
             <button class="slimBtn" id="shareMyBlockBtn">${tr('share')}</button>
@@ -2821,15 +2720,12 @@ function updateGpsStatusBadge() {
     btn.classList.remove('gpsIdle','gpsFetching','gpsFixed','primary');
     btn.classList.add(gpsButtonClass());
   }
-  updateGpsProgressUi();
 }
-
 
 function hydrateUiFromState() {
   hydrateMyFromState();
   updateClock();
   updateGpsStatusBadge();
-  updateGpsProgressUi();
   updateHeadingUi();
   updateGnssUi();
   const dxCallEl = document.getElementById('dxCall');
@@ -2869,10 +2765,6 @@ function clearMyGps() {
   state.myGeo = null;
   state.gpsActualTimeZone = null;
   state.gpsLoading = false;
-  state.gpsStartedAt = 0;
-  state.gpsBestAccuracy = null;
-  state.gpsReverseDone = false;
-  stopGpsProgressTimer();
   state.addrQuery = '';
   state.addrSuggestions = [];
   document.getElementById('myCountry').textContent = '-';
@@ -2888,7 +2780,6 @@ function clearMyGps() {
   hideAddressSuggestions();
   updateClock();
   updateGpsStatusBadge();
-  updateGpsProgressUi();
   persistCoreState();
 }
 
@@ -2913,22 +2804,6 @@ function clearDx() {
   persistCoreState();
 }
 
-
-async function retryReverseGeocodeMy(lat, lon) {
-  const delays = [1200, 2600, 4200];
-  for (const ms of delays) {
-    await new Promise(r => setTimeout(r, ms));
-    try {
-      const geo = await reverseGeocode(lat, lon);
-      if (geo && [geo.country, geo.city, geo.street].some(v => String(v || '').trim() && String(v).trim() !== '-')) {
-        state.gpsReverseDone = true;
-        fillMy(geo, lat, lon);
-        return;
-      }
-    } catch {}
-  }
-}
-
 function fillMy(geo, lat, lon) {
   state.myGeo = geo;
   document.getElementById('myCountry').textContent = geo.country;
@@ -2941,7 +2816,6 @@ function fillMy(geo, lat, lon) {
   document.getElementById('gmaps').innerHTML = `<a id="gmapsLink" class="link" target="_blank" href="${googleMapsUrl(lat, lon)}">${lat.toFixed(6)}, ${lon.toFixed(6)}</a>`;
   updateClock();
   updateGpsStatusBadge();
-  updateGpsProgressUi();
   persistCoreState();
 }
 
@@ -2978,11 +2852,7 @@ async function startBasicGnssWatch() {
 
 async function getPosition() {
   state.gpsLoading = true;
-  state.gpsStartedAt = Date.now();
-  state.gpsBestAccuracy = null;
-  state.gpsReverseDone = false;
   updateGpsStatusBadge();
-  startGpsProgressTimer();
   startHeadingWatch();
   startNativeGnssIfAvailable();
   startBasicGnssWatch();
@@ -3020,10 +2890,8 @@ async function getPosition() {
     let geo = null;
     try {
       geo = await reverseGeocode(latitude, longitude);
-      state.gpsReverseDone = !!geo;
     } catch {}
     fillMy(geo || { country: '-', city: '-', street: '-' }, latitude, longitude);
-    if (!geo) retryReverseGeocodeMy(latitude, longitude);
     await ensureEnvironmentData(true);
     persistCoreState();
     evaluateDx();
@@ -3031,12 +2899,9 @@ async function getPosition() {
     alert(tr('gpsErrorPrefix') + (err?.message || String(err)));
   } finally {
     state.gpsLoading = false;
-    stopGpsProgressTimer();
     updateGpsStatusBadge();
-    updateGpsProgressUi();
   }
 }
-
 
 async function getGpsTimeOnly() {
   try {

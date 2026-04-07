@@ -1,0 +1,12 @@
+Änderungen in dieser Version
+- Bestehende Tools erhalten: GPS, Adresse -> Locator, Q-Codes, Gegenstation, Distanz, Azimut, Karte, Teilen, Sprache, Theme
+- Neue Tabs: Bandempfehlung, DE Klassen, Propagation, Wetter
+- Bandempfehlung nutzt Standort/Adresse + Tageszeit + Funkwetter + Wetter
+- Propagation liest HamQSL Solar XML
+- Wetter liest Open-Meteo
+- Deutsche Klassen als Kurzüberblick N / E / A ergänzt
+
+Wichtiger Hinweis zum lokalen Build-Check in dieser Umgebung
+- Die JavaScript-Datei src/main.js wurde erfolgreich per Syntax-Check geprüft.
+- Ein kompletter npm/Android-Build konnte hier nicht vollständig ausgeführt werden, weil die Umgebung keinen normalen Zugriff auf das npm-Registry hatte.
+- Falls Android Studio bei dir noch Fehler meldet, schick mir bitte den exakten Fehlertext oder Screenshot. Dann kann ich gezielt den nächsten Fix einbauen.

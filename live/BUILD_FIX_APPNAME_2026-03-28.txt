@@ -1,0 +1,4 @@
+Android-Build-Fix:
+- app_name in android/app/src/main/res/values/strings.xml auf reinen ASCII-Namen gesetzt
+- capacitor.config.ts appName ebenfalls auf sicheren Namen gesetzt
+Grund: AAPT-Fehler bei mergeDebugResources wegen string/app_name und ungültiger Escape/Unicode-Verarbeitung.

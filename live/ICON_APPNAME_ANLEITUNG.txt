@@ -1,0 +1,35 @@
+Schippi's Ham&Cheese – Icon + App-Name
+
+In diesem Paket wurden schon vorbereitet:
+- App-Name in der Web-App auf "Schippi's Ham&Cheese" geändert
+- Android app_name in strings.xml auf "Schippi's Ham&Cheese" gesetzt
+- Android Launcher-Icons in die mipmap-Ordner gelegt
+- Original-Icon zusätzlich im Ordner icon_assets gespeichert
+
+Danach bitte ausführen:
+
+npm install
+npm run build
+npx cap sync android
+
+Dann Android Studio öffnen oder aktualisieren.
+
+Falls das Icon in Android Studio noch nicht sofort sichtbar ist:
+1. Android Studio öffnen
+2. Build > Clean Project
+3. Build > Rebuild Project
+
+Falls du das Icon lieber über Android Studio setzen willst:
+1. Rechtsklick auf android/app/src/main/res
+2. New > Image Asset
+3. Path auswählen:
+   icon_assets/schippis_ham_cheese_icon.png
+4. Name:
+   ic_launcher
+5. Finish
+
+Der Android-App-Name steht hier:
+android/app/src/main/res/values/strings.xml
+
+Der sichtbare Titel innerhalb der App steht hier:
+src/main.js

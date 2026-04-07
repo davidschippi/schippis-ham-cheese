@@ -1,6 +1,6 @@
 {
   "name": "schippis-ham-cheese",
-  "version": "1.7.4",
+  "version": "1.7.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,13 +15,11 @@
     "@capacitor/android": "^7.0.0",
     "@capacitor/core": "^7.0.0",
     "@capacitor/geolocation": "^7.1.0",
-    "@capacitor/motion": "^7.0.0",
     "@capacitor/share": "^7.0.0",
     "tz-lookup": "^6.1.25"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.0.0",
-    "typescript": "^6.0.2",
     "vite": "^5.4.0"
   }
 }

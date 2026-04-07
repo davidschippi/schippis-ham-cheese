@@ -1,0 +1,13 @@
+Schippi's Ham&Cheese – multilingual + class recommendation fix
+
+Fixed in this package:
+- language switching now really updates visible app labels
+- new field "Allowed N / E / A" is shown and filled
+- BNetzA button is only visible in German
+- Q-code, locator and callsign logic stay active
+
+Build:
+npm install
+npm run build
+npx cap sync android
+npx cap open android
